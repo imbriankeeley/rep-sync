@@ -38,11 +38,17 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`
 ```
 Output: `app/build/outputs/apk/release/app-release-unsigned.apk`
 
-**Release (signed — see [Signing for Release](#signing-for-release) below):**
+**Release (signed, local only — see [Signing for Release](#signing-for-release) below):**
 ```bash
 ./gradlew assembleRelease
 ```
 Output: `app/build/outputs/apk/release/app-release.apk`
+
+**Debug APK (GitHub Releases / CI):**
+```bash
+./gradlew assembleDebug
+```
+Output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Run on a Device
 
@@ -92,7 +98,7 @@ The signed APK is at:
 app/build/outputs/apk/release/app-release.apk
 ```
 
-> **Tip:** For CI (e.g. GitHub Actions), set the four `REPSYNC_*` values as repository secrets and write the keystore from a base64 secret.
+> **Note:** GitHub release automation in this repo publishes the debug APK and does not require signing secrets.
 
 ## Distribution via Obtainium
 
@@ -109,16 +115,10 @@ app/build/outputs/apk/release/app-release.apk
 ### For Maintainers — Publishing a Release
 
 1. Bump `versionCode` and `versionName` in `app/build.gradle.kts`.
-2. Build the signed release APK:
-   ```bash
-   ./gradlew assembleRelease
-   ```
-3. Create a new **GitHub Release**:
-   - Go to **Releases > Draft a new release** on the repo.
-   - Create a tag (e.g. `v1.0.0`) matching the `versionName`.
-   - Add release notes describing what changed.
-   - Attach `app/build/outputs/apk/release/app-release.apk` as a release asset.
-4. Publish the release. Obtainium users who added this repo will see the update.
+2. Push your changes to GitHub.
+3. Create and push a tag matching the version, for example `v1.0.5`.
+4. GitHub Actions will build `app/build/outputs/apk/debug/app-debug.apk` and publish it to a GitHub Release for that tag.
+5. Confirm the release contains the debug APK asset. Obtainium users who added this repo will see the update.
 
 ## Repo Structure
 
