@@ -1,0 +1,67 @@
+You are working in the RepSync repository, an offline-first Android workout app.
+
+Read AGENTS.md first and follow it. Then inspect the relevant files before making changes. Reuse the existing architecture and UI patterns already present in the repo.
+
+Implement the feature below end-to-end in code, not just as a plan.
+
+Feature request:
+When a user taps Finish Workout, the app should check whether the workout is fully completed before ending it. If any set has not been marked complete with the checkmark, or if any weight or reps field is still empty, show a confirmation dialog warning the user that the workout has incomplete sets or missing inputs and ask whether they still want to finish. If everything is complete, the existing finish flow should continue normally without the extra warning.
+
+User outcome:
+Users get a clear warning before accidentally finishing a workout that still has unchecked sets or missing weight/reps values, while still being allowed to finish intentionally if they choose to.
+
+Acceptance criteria:
+- Tapping Finish Workout checks all exercises and sets in the active workout.
+- If any set is unchecked, or if weight or reps is blank for any set, show a confirmation dialog before finishing.
+- The dialog clearly tells the user the workout is incomplete and offers options to go back or finish anyway.
+- If all sets are checked and all weight/reps fields are filled, finishing the workout behaves as it does today with no extra warning.
+- This behavior works for both regular workouts and quick workouts.
+
+Non-goals:
+- Do not redesign the active workout screen.
+- Do not change how completed workouts are stored beyond this validation/confirmation behavior.
+- Do not require users to fill values before finishing; they should still be allowed to override and finish anyway.
+- Do not add cloud sync, analytics, or new dependencies.
+
+Constraints:
+- Keep the app offline-first and local-only unless I explicitly ask otherwise.
+- Keep the existing dark Material 3 visual style.
+- Avoid unnecessary new dependencies.
+- Prefer the repo's current patterns: Compose screens, StateFlow-backed ViewModels, Room/DataStore persistence, and Navigation Compose.
+
+Likely files or areas to inspect first:
+- app/src/main/java/com/repsync/app/ui/screens/ActiveWorkoutScreen.kt
+- app/src/main/java/com/repsync/app/ui/viewmodel/ActiveWorkoutManager.kt
+- app/src/main/java/com/repsync/app/ui/theme/Theme.kt
+
+Data impact:
+- None expected. This should be UI/viewmodel validation and confirmation logic only unless inspection shows a small state change is needed.
+
+Navigation impact:
+- None expected.
+
+Verification required:
+- Run ./gradlew assembleDebug after the change if possible.
+- Manually test these flows:
+  - Finish a workout with all sets checked and all weight/reps filled: it should finish normally.
+  - Finish a workout with one or more unchecked sets: warning dialog should appear.
+  - Finish a workout with missing weight or missing reps in any set: warning dialog should appear.
+  - Choose “Go Back” from the warning dialog: workout should remain active and unchanged.
+  - Choose “Finish Anyway” from the warning dialog: workout should finish successfully.
+  - Verify behavior works for both template-based workouts and quick workouts.
+
+Implementation rules:
+1. Read the affected screen, ViewModel, DAO/entity, navigation, and theme files before editing.
+2. Make the smallest coherent change that completely delivers the feature.
+3. If Room schema changes are needed, add a migration and preserve user data.
+4. If a new screen or route is needed, update both Screen.kt and RepSyncNavHost.kt.
+5. Keep reusable UI in ui/components and screen-specific code in ui/screens.
+6. State any assumptions you make, but do not stop for clarification unless the risk is high.
+7. After coding, summarize what changed, which files were touched, what was verified, and any remaining risks.
+
+Deliverables:
+- Implemented code changes
+- Short summary
+- Assumptions made
+- Verification results
+- Any follow-up suggestions only if they are truly important

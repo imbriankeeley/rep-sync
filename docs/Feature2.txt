@@ -1,0 +1,75 @@
+You are working in the RepSync repository, an offline-first Android workout app.
+
+Read AGENTS.md first and follow it. Then inspect the relevant files before making changes. Reuse the existing architecture and UI patterns already present in the repo.
+
+Implement the feature below end-to-end in code, not just as a plan.
+
+Feature request:
+Add a bodyweight trend metric to the Profile page so the bodyweight tracker shows the user’s rate of weight gain or loss. In the Bodyweight section, display a small summary such as “Gaining 0.4 lbs/week”, “Losing 0.7 lbs/week”, or a neutral equivalent when the change is minimal. Compute this from the user’s logged bodyweight entries already stored locally. The metric should update automatically when entries are added, edited, or deleted.
+
+User outcome:
+Users can quickly understand not just their latest weight, but whether they are trending up, trending down, or staying roughly stable over time.
+
+Acceptance criteria:
+- The Profile page Bodyweight section shows a rate-of-change metric when there are at least 2 valid bodyweight entries spanning at least 1 day.
+- The metric is expressed in a user-friendly format, normalized to a weekly rate, such as “Gaining X lbs/week” or “Losing X lbs/week”.
+- The metric updates correctly after adding, editing, or deleting bodyweight entries.
+- If there is not enough data to calculate a meaningful trend, the UI shows no rate metric or a subtle helper message instead of misleading output.
+- The existing latest-weight display, chart, add/edit/delete actions, and “View All Entries” behavior continue to work.
+
+Non-goals:
+- Do not redesign the whole Profile screen or Bodyweight card.
+- Do not add a new screen, route, or settings page for this feature.
+- Do not introduce cloud sync, analytics, or new dependencies.
+- Do not implement advanced statistical modeling; a clear, simple trend calculation is enough.
+
+Constraints:
+- Keep the app offline-first and local-only unless I explicitly ask otherwise.
+- Keep the existing dark Material 3 visual style.
+- Avoid unnecessary new dependencies.
+- Prefer the repo's current patterns: Compose screens, StateFlow-backed ViewModels, Room/DataStore persistence, and Navigation Compose.
+
+Likely files or areas to inspect first:
+- app/src/main/java/com/repsync/app/ui/screens/ProfileScreen.kt
+- app/src/main/java/com/repsync/app/ui/viewmodel/ProfileViewModel.kt
+- app/src/main/java/com/repsync/app/ui/components/WeightProgressionChart.kt
+- app/src/main/java/com/repsync/app/data/dao/BodyweightDao.kt
+
+Data impact:
+- None expected. This should likely be derived UI/ViewModel state from existing bodyweight entries.
+
+Navigation impact:
+- None expected.
+
+Verification required:
+- Run ./gradlew assembleDebug after the change if possible.
+- Manually test these flows:
+  - No bodyweight entries: no incorrect trend should appear.
+  - One bodyweight entry only: trend should remain hidden or show a not-enough-data message.
+  - Two or more entries with an upward trend: profile should show a gain rate.
+  - Two or more entries with a downward trend: profile should show a loss rate.
+  - Edit an entry and confirm the trend recalculates correctly.
+  - Delete an entry and confirm the trend recalculates correctly.
+  - Confirm the latest weight, chart, and recent entries still display correctly.
+
+Implementation rules:
+1. Read the affected screen, ViewModel, DAO/entity, navigation, and theme files before editing.
+2. Make the smallest coherent change that completely delivers the feature.
+3. If Room schema changes are needed, add a migration and preserve user data.
+4. If a new screen or route is needed, update both Screen.kt and RepSyncNavHost.kt.
+5. Keep reusable UI in ui/components and screen-specific code in ui/screens.
+6. State any assumptions you make, but do not stop for clarification unless the risk is high.
+7. After coding, summarize what changed, which files were touched, what was verified, and any remaining risks.
+
+Implementation notes:
+- Prefer deriving the trend from the existing chronological bodyweight entries already exposed in ProfileViewModel.
+- A simple baseline calculation is acceptable: compare the oldest and newest usable entries, divide weight change by elapsed days, and convert to lbs/week.
+- Guard against divide-by-zero and same-day-only data.
+- Keep the presentation subtle and consistent with the current Bodyweight card styling.
+
+Deliverables:
+- Implemented code changes
+- Short summary
+- Assumptions made
+- Verification results
+- Any follow-up suggestions only if they are truly important

@@ -142,7 +142,7 @@ RepSync/
 ```
 
 - **Spec:** See [docs/plan.md](docs/plan.md) for the single source of truth (flows, data model, UI, distribution).
-- **Implementation guide:** See [prompts.md](prompts.md) for step-by-step prompts keyed to the plan.
+- **Implementation guide:** See [prompts.md](docs/prompts.md) for step-by-step prompts keyed to the plan.
 
 ## License
 

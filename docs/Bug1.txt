@@ -1,0 +1,74 @@
+You are working in the RepSync repository, an offline-first Android workout app.
+
+Read AGENTS.md first and follow it. Then inspect the relevant files before making changes. Reuse the existing architecture and UI patterns already present in the repo.
+
+Implement the bug fix below end-to-end in code, not just as a plan.
+
+Bug report:
+Sometimes when a user backs out of an active workout, the workout is lost with no visible way to return to it. The app is supposed to keep the active workout available through the banner at the top so the user can tap it and resume, but in this bug case that banner does not appear and the active workout becomes inaccessible.
+
+User outcome:
+If a user leaves an active workout without finishing or canceling it, the workout should remain recoverable and the top banner should reliably appear so they can tap back into it.
+
+Acceptance criteria:
+- Leaving an active workout screen without finishing or canceling does not lose the active workout state.
+- The active workout banner reliably appears when a workout is still active and the user is on another screen.
+- Tapping the banner always returns the user to the correct active workout.
+- This works for both template-based workouts and quick workouts.
+- Finishing or canceling a workout still clears the active workout and removes the banner as intended.
+
+Non-goals:
+- Do not redesign navigation or the active workout UI.
+- Do not change the expected behavior of finish or cancel actions.
+- Do not add cloud sync, auto-save history, or new dependencies.
+- Do not rewrite the app architecture unless it is truly necessary to fix the bug.
+
+Constraints:
+- Keep the app offline-first and local-only unless I explicitly ask otherwise.
+- Keep the existing dark Material 3 visual style.
+- Avoid unnecessary new dependencies.
+- Prefer the repo's current patterns: Compose screens, StateFlow-backed ViewModels, Room/DataStore persistence, and Navigation Compose.
+
+Likely files or areas to inspect first:
+- app/src/main/java/com/repsync/app/MainActivity.kt
+- app/src/main/java/com/repsync/app/ui/viewmodel/ActiveWorkoutManager.kt
+- app/src/main/java/com/repsync/app/ui/screens/ActiveWorkoutScreen.kt
+- app/src/main/java/com/repsync/app/navigation/RepSyncNavHost.kt
+- app/src/main/java/com/repsync/app/ui/components/ActiveWorkoutBanner.kt
+
+Data impact:
+- None expected unless inspection shows the active workout state needs safer local persistence.
+
+Navigation impact:
+- Likely none, unless the bug is caused by route handling or back-stack behavior.
+
+Verification required:
+- Run ./gradlew assembleDebug after the change if possible.
+- Manually test these flows:
+  - Start a template workout, leave the screen, and confirm the banner appears and returns to the workout.
+  - Start a quick workout, leave the screen, and confirm the banner appears and returns to the workout.
+  - Navigate across multiple screens while a workout is active and confirm the banner remains reliable.
+  - Finish a workout and confirm the banner disappears.
+  - Cancel a workout and confirm the banner disappears.
+  - Try the specific back/navigation path that was causing the bug and confirm the workout is not lost.
+
+Implementation rules:
+1. Read the affected screen, ViewModel, DAO/entity, navigation, and theme files before editing.
+2. Make the smallest coherent change that completely fixes the bug.
+3. If Room schema changes are needed, add a migration and preserve user data.
+4. If a new screen or route is needed, update both Screen.kt and RepSyncNavHost.kt.
+5. Keep reusable UI in ui/components and screen-specific code in ui/screens.
+6. State any assumptions you make, but do not stop for clarification unless the risk is high.
+7. After coding, summarize what changed, which files were touched, what was verified, and any remaining risks.
+
+Implementation notes:
+- Focus on why active workout state or banner visibility is being dropped when the user leaves the workout screen.
+- Inspect activity-scoped ViewModel usage, nav/back-stack behavior, banner visibility conditions, and any code path that may be clearing active workout state unintentionally.
+- Preserve the intended behavior: only explicit finish/cancel should clear the workout.
+
+Deliverables:
+- Implemented code changes
+- Short summary
+- Assumptions made
+- Verification results
+- Any follow-up suggestions only if they are truly important
