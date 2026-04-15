@@ -23,5 +23,8 @@ data class ExerciseSetEntity(
     val exerciseId: Long,
     val orderIndex: Int,
     val weight: Double? = null,
-    val reps: Int? = null
+    val reps: Int? = null,
+    val durationSeconds: Int? = null,
+    val distanceMiles: Double? = null,
+    val speedMph: Double? = null,
 )

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.ui.components.ExerciseNameField
 import com.repsync.app.ui.theme.BackgroundCard
 import com.repsync.app.ui.theme.BackgroundCardElevated
@@ -121,6 +122,9 @@ fun NewWorkoutScreen(
                         exerciseNameSuggestions = uiState.exerciseNameSuggestions,
                         onExerciseNameChange = { name ->
                             viewModel.onExerciseNameChange(exercise.id, name)
+                        },
+                        onTrackingTypeChange = { trackingType ->
+                            viewModel.onExerciseTrackingTypeChange(exercise.id, trackingType)
                         },
                         onAddSet = { viewModel.addSet(exercise.id) },
                         onRemoveSet = { setIndex -> viewModel.removeSet(exercise.id, setIndex) },
@@ -277,6 +281,7 @@ private fun ExerciseCard(
     exercise: ExerciseUiModel,
     exerciseNameSuggestions: List<String>,
     onExerciseNameChange: (String) -> Unit,
+    onTrackingTypeChange: (ExerciseTrackingType) -> Unit,
     onAddSet: () -> Unit,
     onRemoveSet: (Int) -> Unit,
     onRemoveExercise: () -> Unit,
@@ -318,6 +323,13 @@ private fun ExerciseCard(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        TrackingTypeSelector(
+            selectedType = exercise.trackingType,
+            onTypeSelected = onTrackingTypeChange,
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -387,5 +399,51 @@ private fun ExerciseCard(
                 style = MaterialTheme.typography.labelMedium,
             )
         }
+    }
+}
+
+@Composable
+private fun TrackingTypeSelector(
+    selectedType: ExerciseTrackingType,
+    onTypeSelected: (ExerciseTrackingType) -> Unit,
+) {
+    Column {
+        Text(
+            text = "Tracking",
+            color = TextOnDarkSecondary,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ExerciseTrackingType.entries.forEach { type ->
+                val isSelected = selectedType == type
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isSelected) PrimaryGreen else BackgroundCardElevated)
+                        .clickable { onTypeSelected(type) }
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = trackingTypeSelectorLabel(type),
+                        color = if (isSelected) TextOnDark else TextOnDarkSecondary,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun trackingTypeSelectorLabel(type: ExerciseTrackingType): String {
+    return when (type) {
+        ExerciseTrackingType.WEIGHT_REPS -> "Weight + Reps"
+        ExerciseTrackingType.DURATION -> "Time"
+        ExerciseTrackingType.DURATION_DISTANCE -> "Time + Dist + Speed"
     }
 }

@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.ui.components.WeightProgressionChart
 import com.repsync.app.ui.theme.BackgroundCard
 import com.repsync.app.ui.theme.BackgroundCardElevated
@@ -51,6 +52,9 @@ import com.repsync.app.ui.theme.TextOnDark
 import com.repsync.app.ui.theme.TextOnDarkSecondary
 import com.repsync.app.ui.viewmodel.ExerciseHistoryViewModel
 import com.repsync.app.ui.viewmodel.ExerciseSession
+import com.repsync.app.util.formatDurationValue
+import com.repsync.app.util.formatTrackedSetSummary
+import com.repsync.app.util.formatWeightValue
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -109,6 +113,7 @@ fun ExerciseHistoryScreen(
                 item {
                     Spacer(modifier = Modifier.height(16.dp))
                     StatsRow(
+                        trackingType = uiState.trackingType,
                         allTimePR = uiState.allTimePR,
                         totalVolume = uiState.totalVolume,
                         sessionCount = uiState.sessionCount,
@@ -120,6 +125,11 @@ fun ExerciseHistoryScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     WeightProgressionChart(
                         dataPoints = uiState.chartDataPoints,
+                        label = when (uiState.trackingType) {
+                            ExerciseTrackingType.WEIGHT_REPS -> "lbs"
+                            ExerciseTrackingType.DURATION -> "sec"
+                            ExerciseTrackingType.DURATION_DISTANCE -> "mi"
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp),
@@ -287,22 +297,43 @@ private fun ExerciseHistoryHeader(
 
 @Composable
 private fun StatsRow(
+    trackingType: ExerciseTrackingType,
     allTimePR: Double?,
     totalVolume: Double,
     sessionCount: Int,
 ) {
+    val prValue = when (trackingType) {
+        ExerciseTrackingType.WEIGHT_REPS -> allTimePR?.let { "${formatWeight(it)} lbs" } ?: "-"
+        ExerciseTrackingType.DURATION -> allTimePR?.toInt()?.let(::formatDurationValue) ?: "-"
+        ExerciseTrackingType.DURATION_DISTANCE -> allTimePR?.let { "${formatDistance(it)} mi" } ?: "-"
+    }
+    val totalValue = when (trackingType) {
+        ExerciseTrackingType.WEIGHT_REPS -> formatVolume(totalVolume)
+        ExerciseTrackingType.DURATION -> formatDurationValue(totalVolume.toInt())
+        ExerciseTrackingType.DURATION_DISTANCE -> "${formatDistance(totalVolume)} mi"
+    }
+    val prLabel = when (trackingType) {
+        ExerciseTrackingType.WEIGHT_REPS -> "PR"
+        ExerciseTrackingType.DURATION -> "Best Time"
+        ExerciseTrackingType.DURATION_DISTANCE -> "Best Dist"
+    }
+    val totalLabel = when (trackingType) {
+        ExerciseTrackingType.WEIGHT_REPS -> "Volume"
+        ExerciseTrackingType.DURATION -> "Total Time"
+        ExerciseTrackingType.DURATION_DISTANCE -> "Total Dist"
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StatCard(
-            label = "PR",
-            value = allTimePR?.let { "${formatWeight(it)} lbs" } ?: "-",
+            label = prLabel,
+            value = prValue,
             modifier = Modifier.weight(1f),
         )
         StatCard(
-            label = "Volume",
-            value = formatVolume(totalVolume),
+            label = totalLabel,
+            value = totalValue,
             modifier = Modifier.weight(1f),
         )
         StatCard(
@@ -384,10 +415,15 @@ private fun SessionCard(session: ExerciseSession) {
                     fontSize = 13.sp,
                     modifier = Modifier.width(48.dp),
                 )
-                val w = set.weight?.let { formatWeight(it) } ?: "-"
-                val r = set.reps?.toString() ?: "-"
                 Text(
-                    text = "$w lbs x $r reps",
+                    text = formatTrackedSetSummary(
+                        trackingType = session.trackingType,
+                        weight = set.weight,
+                        reps = set.reps,
+                        durationSeconds = set.durationSeconds,
+                        distanceMiles = set.distanceMiles,
+                        speedMph = set.speedMph,
+                    ),
                     color = TextOnDark,
                     fontSize = 13.sp,
                 )
@@ -621,11 +657,13 @@ private fun DateInputField(
     )
 }
 
-private fun formatWeight(weight: Double): String {
-    return if (weight == weight.toLong().toDouble()) {
-        weight.toLong().toString()
+private fun formatWeight(weight: Double): String = formatWeightValue(weight)
+
+private fun formatDistance(distance: Double): String {
+    return if (distance == distance.toLong().toDouble()) {
+        distance.toLong().toString()
     } else {
-        weight.toString()
+        "%.2f".format(distance)
     }
 }
 

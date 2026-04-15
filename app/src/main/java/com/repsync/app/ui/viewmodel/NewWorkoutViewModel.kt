@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.repsync.app.data.RepSyncDatabase
 import com.repsync.app.data.entity.ExerciseEntity
 import com.repsync.app.data.entity.ExerciseSetEntity
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.data.entity.WorkoutEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +20,7 @@ data class SetUiModel(
 data class ExerciseUiModel(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String = "",
+    val trackingType: ExerciseTrackingType = ExerciseTrackingType.WEIGHT_REPS,
     val sets: List<SetUiModel> = listOf(SetUiModel(orderIndex = 0)),
 )
 
@@ -59,6 +61,9 @@ class NewWorkoutViewModel(application: Application) : AndroidViewModel(applicati
                 .map { exerciseWithSets ->
                     ExerciseUiModel(
                         name = exerciseWithSets.exercise.name,
+                        trackingType = ExerciseTrackingType.fromStorage(
+                            exerciseWithSets.exercise.trackingType
+                        ),
                         sets = exerciseWithSets.sets
                             .sortedBy { it.orderIndex }
                             .map { set ->
@@ -107,6 +112,16 @@ class NewWorkoutViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.value = current.copy(
             exercises = current.exercises.map { exercise ->
                 if (exercise.id == exerciseId) exercise.copy(name = name)
+                else exercise
+            }
+        )
+    }
+
+    fun onExerciseTrackingTypeChange(exerciseId: String, trackingType: ExerciseTrackingType) {
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            exercises = current.exercises.map { exercise ->
+                if (exercise.id == exerciseId) exercise.copy(trackingType = trackingType)
                 else exercise
             }
         )
@@ -175,6 +190,7 @@ class NewWorkoutViewModel(application: Application) : AndroidViewModel(applicati
                     workoutId = workoutId,
                     name = exercise.name,
                     orderIndex = exerciseIndex,
+                    trackingType = exercise.trackingType.storageValue,
                 )
             )
             val sets = exercise.sets.mapIndexed { setIndex, _ ->
@@ -183,6 +199,9 @@ class NewWorkoutViewModel(application: Application) : AndroidViewModel(applicati
                     orderIndex = setIndex,
                     weight = null,
                     reps = null,
+                    durationSeconds = null,
+                    distanceMiles = null,
+                    speedMph = null,
                 )
             }
             if (sets.isNotEmpty()) {

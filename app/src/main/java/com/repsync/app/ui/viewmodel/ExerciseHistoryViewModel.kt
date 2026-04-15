@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.repsync.app.data.RepSyncDatabase
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.data.entity.ExerciseHistoryRow
 import com.repsync.app.ui.components.ChartDataPoint
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,17 +16,22 @@ import java.time.LocalDate
 data class ExerciseSessionSet(
     val weight: Double?,
     val reps: Int?,
+    val durationSeconds: Int?,
+    val distanceMiles: Double?,
+    val speedMph: Double?,
 )
 
 data class ExerciseSession(
     val date: LocalDate,
     val workoutName: String,
+    val trackingType: ExerciseTrackingType,
     val sets: List<ExerciseSessionSet>,
 )
 
 data class ExerciseHistoryUiState(
     val exerciseName: String = "",
     val isLoading: Boolean = true,
+    val trackingType: ExerciseTrackingType = ExerciseTrackingType.WEIGHT_REPS,
     val allTimePR: Double? = null,
     val totalVolume: Double = 0.0,
     val sessionCount: Int = 0,
@@ -64,26 +70,30 @@ class ExerciseHistoryViewModel(application: Application) : AndroidViewModel(appl
                 return@launch
             }
 
+            val trackingType = ExerciseTrackingType.fromStorage(rows.first().trackingType)
             // Group rows into sessions (by date + workoutName)
             val allSessions = groupIntoSessions(rows)
 
-            // Calculate total volume (sum of weight * reps for all sets)
-            var totalVolume = 0.0
-            rows.forEach { row ->
-                val w = row.weight ?: 0.0
-                val r = row.reps ?: 0
-                totalVolume += w * r
+            val totalVolume = rows.sumOf { row ->
+                when (trackingType) {
+                    ExerciseTrackingType.WEIGHT_REPS -> (row.weight ?: 0.0) * (row.reps ?: 0)
+                    ExerciseTrackingType.DURATION -> (row.durationSeconds ?: 0).toDouble()
+                    ExerciseTrackingType.DURATION_DISTANCE -> row.distanceMiles ?: 0.0
+                }
             }
 
-            // Chart data: max weight per date (chronological) — uses ALL data
+            // Chart data uses the most useful primary metric for the tracking type.
             val chartDataPoints = rows
                 .groupBy { it.date }
                 .mapNotNull { (dateStr, dateRows) ->
                     val date = runCatching { LocalDate.parse(dateStr) }.getOrNull()
                         ?: return@mapNotNull null
-                    val maxW = dateRows.mapNotNull { it.weight }.maxOrNull()
-                        ?: return@mapNotNull null
-                    ChartDataPoint(date = date, value = maxW)
+                    val maxValue = when (trackingType) {
+                        ExerciseTrackingType.WEIGHT_REPS -> dateRows.mapNotNull { it.weight }.maxOrNull()
+                        ExerciseTrackingType.DURATION -> dateRows.mapNotNull { it.durationSeconds?.toDouble() }.maxOrNull()
+                        ExerciseTrackingType.DURATION_DISTANCE -> dateRows.mapNotNull { it.distanceMiles }.maxOrNull()
+                    } ?: return@mapNotNull null
+                    ChartDataPoint(date = date, value = maxValue)
                 }
                 .sortedBy { it.date }
 
@@ -92,6 +102,7 @@ class ExerciseHistoryViewModel(application: Application) : AndroidViewModel(appl
 
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
+                trackingType = trackingType,
                 allTimePR = maxWeight,
                 totalVolume = totalVolume,
                 sessionCount = allSessions.size,
@@ -157,6 +168,7 @@ class ExerciseHistoryViewModel(application: Application) : AndroidViewModel(appl
     private fun groupIntoSessions(rows: List<ExerciseHistoryRow>): List<ExerciseSession> {
         val grouped = mutableListOf<ExerciseSession>()
         var currentKey: Pair<String, String>? = null
+        var currentTrackingType = ExerciseTrackingType.WEIGHT_REPS
         var currentSets = mutableListOf<ExerciseSessionSet>()
 
         for (row in rows) {
@@ -165,19 +177,26 @@ class ExerciseHistoryViewModel(application: Application) : AndroidViewModel(appl
                 if (currentKey != null && currentSets.isNotEmpty()) {
                     val date = runCatching { LocalDate.parse(currentKey!!.first) }
                         .getOrDefault(LocalDate.now())
-                    grouped.add(
-                        ExerciseSession(date, currentKey!!.second, currentSets.toList())
-                    )
+                    grouped.add(ExerciseSession(date, currentKey!!.second, currentTrackingType, currentSets.toList()))
                 }
                 currentKey = key
+                currentTrackingType = ExerciseTrackingType.fromStorage(row.trackingType)
                 currentSets = mutableListOf()
             }
-            currentSets.add(ExerciseSessionSet(weight = row.weight, reps = row.reps))
+            currentSets.add(
+                ExerciseSessionSet(
+                    weight = row.weight,
+                    reps = row.reps,
+                    durationSeconds = row.durationSeconds,
+                    distanceMiles = row.distanceMiles,
+                    speedMph = row.speedMph,
+                )
+            )
         }
         if (currentKey != null && currentSets.isNotEmpty()) {
             val date = runCatching { LocalDate.parse(currentKey!!.first) }
                 .getOrDefault(LocalDate.now())
-            grouped.add(ExerciseSession(date, currentKey!!.second, currentSets.toList()))
+            grouped.add(ExerciseSession(date, currentKey!!.second, currentTrackingType, currentSets.toList()))
         }
 
         return grouped

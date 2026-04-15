@@ -62,7 +62,7 @@ interface CompletedWorkoutDao {
      */
     @Query(
         """
-        SELECT cs.weight, cs.reps
+        SELECT ce.trackingType, cs.weight, cs.reps, cs.durationSeconds, cs.distanceMiles, cs.speedMph
         FROM completed_sets cs
         INNER JOIN completed_exercises ce ON cs.completedExerciseId = ce.id
         INNER JOIN completed_workouts cw ON ce.completedWorkoutId = cw.id
@@ -81,7 +81,7 @@ interface CompletedWorkoutDao {
      */
     @Query(
         """
-        SELECT cs.weight, cs.reps
+        SELECT ce.trackingType, cs.weight, cs.reps, cs.durationSeconds, cs.distanceMiles, cs.speedMph
         FROM completed_sets cs
         INNER JOIN completed_exercises ce ON cs.completedExerciseId = ce.id
         WHERE ce.completedWorkoutId = (
@@ -120,12 +120,34 @@ interface CompletedWorkoutDao {
     @Query("SELECT * FROM completed_workouts WHERE isQuickWorkout = 1 ORDER BY startedAt DESC")
     fun getQuickWorkoutsWithExercises(): Flow<List<CompletedWorkoutWithExercises>>
 
+    @Query(
+        """
+        SELECT ce.trackingType
+        FROM completed_exercises ce
+        INNER JOIN completed_workouts cw ON ce.completedWorkoutId = cw.id
+        WHERE ce.name = :exerciseName
+          AND cw.endedAt IS NOT NULL
+        ORDER BY cw.startedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getMostRecentTrackingTypeForExerciseName(exerciseName: String): String?
+
     /**
      * Get full exercise history: all sets for a specific exercise name across all completed workouts.
      */
     @Query(
         """
-        SELECT cw.date, cw.name AS workoutName, cs.weight, cs.reps, cs.orderIndex
+        SELECT
+            cw.date,
+            cw.name AS workoutName,
+            ce.trackingType,
+            cs.weight,
+            cs.reps,
+            cs.orderIndex,
+            cs.durationSeconds,
+            cs.distanceMiles,
+            cs.speedMph
         FROM completed_sets cs
         INNER JOIN completed_exercises ce ON cs.completedExerciseId = ce.id
         INNER JOIN completed_workouts cw ON ce.completedWorkoutId = cw.id
@@ -141,7 +163,13 @@ interface CompletedWorkoutDao {
      */
     @Query(
         """
-        SELECT MAX(cs.weight)
+        SELECT MAX(
+            CASE ce.trackingType
+                WHEN 'duration_distance' THEN COALESCE(cs.distanceMiles, 0)
+                WHEN 'duration' THEN COALESCE(cs.durationSeconds, 0)
+                ELSE COALESCE(cs.weight, 0)
+            END
+        )
         FROM completed_sets cs
         INNER JOIN completed_exercises ce ON cs.completedExerciseId = ce.id
         INNER JOIN completed_workouts cw ON ce.completedWorkoutId = cw.id

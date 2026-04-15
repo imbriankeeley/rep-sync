@@ -42,14 +42,22 @@ data class CompletedWorkoutWithExercises(
 )
 
 data class PreviousSetResult(
+    val trackingType: String,
     val weight: Double?,
-    val reps: Int?
+    val reps: Int?,
+    val durationSeconds: Int?,
+    val distanceMiles: Double?,
+    val speedMph: Double?,
 )
 
 data class ExerciseHistoryRow(
     val date: String,
     val workoutName: String,
+    val trackingType: String,
     val weight: Double?,
     val reps: Int?,
     val orderIndex: Int,
+    val durationSeconds: Int?,
+    val distanceMiles: Double?,
+    val speedMph: Double?,
 )

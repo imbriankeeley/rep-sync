@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.ui.components.ExerciseNameField
 import com.repsync.app.ui.theme.BackgroundCard
 import com.repsync.app.ui.theme.BackgroundCardElevated
@@ -62,6 +63,7 @@ import com.repsync.app.ui.theme.TextOnDarkSecondary
 import com.repsync.app.ui.viewmodel.ActiveExerciseUiModel
 import com.repsync.app.ui.viewmodel.ActiveSetUiModel
 import com.repsync.app.ui.viewmodel.ActiveWorkoutManager
+import com.repsync.app.util.formatTrackedSetSummary
 import com.repsync.app.util.formatElapsedTime
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -173,6 +175,32 @@ fun ActiveWorkoutScreen(
                                 onSetRepsChange = { setIndex, reps ->
                                     activeWorkoutManager.onSetRepsChange(exercise.id, setIndex, reps)
                                 },
+                                onSetDurationMinutesChange = { setIndex, minutes ->
+                                    activeWorkoutManager.onSetDurationMinutesChange(
+                                        exercise.id,
+                                        setIndex,
+                                        minutes,
+                                    )
+                                },
+                                onSetDurationSecondsChange = { setIndex, seconds ->
+                                    activeWorkoutManager.onSetDurationSecondsChange(
+                                        exercise.id,
+                                        setIndex,
+                                        seconds,
+                                    )
+                                },
+                                onSetDistanceChange = { setIndex, distance ->
+                                    activeWorkoutManager.onSetDistanceChange(exercise.id, setIndex, distance)
+                                },
+                                onSetSpeedChange = { setIndex, speed ->
+                                    activeWorkoutManager.onSetSpeedChange(exercise.id, setIndex, speed)
+                                },
+                                onTrackingTypeChange = { trackingType ->
+                                    activeWorkoutManager.onExerciseTrackingTypeChange(
+                                        exercise.id,
+                                        trackingType,
+                                    )
+                                },
                                 onToggleSetCompleted = { setIndex ->
                                     activeWorkoutManager.toggleSetCompleted(exercise.id, setIndex)
                                 },
@@ -276,7 +304,7 @@ fun ActiveWorkoutScreen(
         if (uiState.showIncompleteFinishDialog) {
             FinishWorkoutDialog(
                 title = "Workout Incomplete",
-                message = "Some sets are unchecked or still missing weight or reps. Do you still want to finish this workout?",
+                message = "Some sets are unchecked or still missing required values. Do you still want to finish this workout?",
                 dismissLabel = "Go Back",
                 confirmLabel = "Finish Anyway",
                 onDismiss = activeWorkoutManager::dismissFinishDialog,
@@ -390,6 +418,11 @@ private fun ActiveExerciseCard(
     onRemoveSet: (Int) -> Unit,
     onSetWeightChange: (Int, String) -> Unit,
     onSetRepsChange: (Int, String) -> Unit,
+    onSetDurationMinutesChange: (Int, String) -> Unit,
+    onSetDurationSecondsChange: (Int, String) -> Unit,
+    onSetDistanceChange: (Int, String) -> Unit,
+    onSetSpeedChange: (Int, String) -> Unit,
+    onTrackingTypeChange: (ExerciseTrackingType) -> Unit,
     onToggleSetCompleted: (Int) -> Unit,
     onRemoveExercise: () -> Unit,
     onExerciseHistoryClick: (String) -> Unit = {},
@@ -450,43 +483,19 @@ private fun ActiveExerciseCard(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Table header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-        ) {
-            Text(
-                text = "Set",
-                modifier = Modifier.width(36.dp),
-                color = TextOnDarkSecondary,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
+        if (exercise.isTrackingTypeEditable) {
+            ActiveTrackingTypeSelector(
+                selectedType = exercise.trackingType,
+                onTypeSelected = onTrackingTypeChange,
             )
-            Text(
-                text = "Previous",
-                modifier = Modifier.weight(1f),
-                color = TextOnDarkSecondary,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "+lbs",
-                modifier = Modifier.weight(1f),
-                color = TextOnDarkSecondary,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Reps",
-                modifier = Modifier.weight(1f),
-                color = TextOnDarkSecondary,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-            )
-            // Checkmark column header
-            Spacer(modifier = Modifier.width(36.dp))
+        } else {
+            TrackingTypePill(trackingType = exercise.trackingType)
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Table header
+        ActiveSetHeaderRow(trackingType = exercise.trackingType)
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -495,8 +504,13 @@ private fun ActiveExerciseCard(
             ActiveSetRow(
                 setNumber = index + 1,
                 set = set,
+                trackingType = exercise.trackingType,
                 onWeightChange = { onSetWeightChange(index, it) },
                 onRepsChange = { onSetRepsChange(index, it) },
+                onDurationMinutesChange = { onSetDurationMinutesChange(index, it) },
+                onDurationSecondsChange = { onSetDurationSecondsChange(index, it) },
+                onDistanceChange = { onSetDistanceChange(index, it) },
+                onSpeedChange = { onSetSpeedChange(index, it) },
                 onToggleCompleted = { onToggleSetCompleted(index) },
                 onRemove = if (exercise.sets.size > 1) {
                     { onRemoveSet(index) }
@@ -529,21 +543,229 @@ private fun ActiveExerciseCard(
 }
 
 @Composable
-private fun ActiveSetRow(
-    setNumber: Int,
-    set: ActiveSetUiModel,
-    onWeightChange: (String) -> Unit,
-    onRepsChange: (String) -> Unit,
-    onToggleCompleted: () -> Unit,
-    onRemove: (() -> Unit)?,
+private fun ActiveTrackingTypeSelector(
+    selectedType: ExerciseTrackingType,
+    onTypeSelected: (ExerciseTrackingType) -> Unit,
 ) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ExerciseTrackingType.entries.forEach { type ->
+            val isSelected = type == selectedType
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSelected) PrimaryGreen else BackgroundCardElevated)
+                    .clickable { onTypeSelected(type) }
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = activeTrackingTypeLabel(type),
+                    color = if (isSelected) TextOnDark else TextOnDarkSecondary,
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackingTypePill(trackingType: ExerciseTrackingType) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(BackgroundCardElevated)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = activeTrackingTypeLabel(trackingType),
+            color = TextOnDarkSecondary,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun ActiveSetHeaderRow(trackingType: ExerciseTrackingType) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Set number badge (tappable to remove when more than 1 set)
+        Text(
+            text = "Set",
+            modifier = Modifier.width(36.dp),
+            color = TextOnDarkSecondary,
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "Previous",
+            modifier = Modifier.weight(1.2f),
+            color = TextOnDarkSecondary,
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = TextAlign.Center,
+        )
+        when (trackingType) {
+            ExerciseTrackingType.WEIGHT_REPS -> {
+                Text(
+                    text = "Details",
+                    modifier = Modifier.weight(2f),
+                    color = TextOnDarkSecondary,
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            ExerciseTrackingType.DURATION -> {
+                Text(
+                    text = "Details",
+                    modifier = Modifier.weight(1.6f),
+                    color = TextOnDarkSecondary,
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            ExerciseTrackingType.DURATION_DISTANCE -> {
+                Text(
+                    text = "Details",
+                    modifier = Modifier.weight(3.1f),
+                    color = TextOnDarkSecondary,
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(36.dp))
+    }
+}
+
+@Composable
+private fun ActiveSetRow(
+    setNumber: Int,
+    set: ActiveSetUiModel,
+    trackingType: ExerciseTrackingType,
+    onWeightChange: (String) -> Unit,
+    onRepsChange: (String) -> Unit,
+    onDurationMinutesChange: (String) -> Unit,
+    onDurationSecondsChange: (String) -> Unit,
+    onDistanceChange: (String) -> Unit,
+    onSpeedChange: (String) -> Unit,
+    onToggleCompleted: () -> Unit,
+    onRemove: (() -> Unit)?,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+    ) {
+        ActiveSetTopRow(
+            setNumber = setNumber,
+            set = set,
+            trackingType = trackingType,
+            onToggleCompleted = onToggleCompleted,
+            onRemove = onRemove,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            when (trackingType) {
+                ExerciseTrackingType.WEIGHT_REPS -> {
+                    LabeledSetInputField(
+                        label = "Weight",
+                        value = set.weight,
+                        placeholder = "+lbs",
+                        onValueChange = onWeightChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Decimal,
+                    )
+                    LabeledSetInputField(
+                        label = "Reps",
+                        value = set.reps,
+                        placeholder = "Reps",
+                        onValueChange = onRepsChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
+                ExerciseTrackingType.DURATION -> {
+                    LabeledSetInputField(
+                        label = "Min",
+                        value = set.durationMinutes,
+                        placeholder = "0",
+                        onValueChange = onDurationMinutesChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                    LabeledSetInputField(
+                        label = "Sec",
+                        value = set.durationSeconds,
+                        placeholder = "00",
+                        onValueChange = onDurationSecondsChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                }
+                ExerciseTrackingType.DURATION_DISTANCE -> {
+                    LabeledSetInputField(
+                        label = "Min",
+                        value = set.durationMinutes,
+                        placeholder = "0",
+                        onValueChange = onDurationMinutesChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                    LabeledSetInputField(
+                        label = "Sec",
+                        value = set.durationSeconds,
+                        placeholder = "00",
+                        onValueChange = onDurationSecondsChange,
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                    )
+                    LabeledSetInputField(
+                        label = "Miles",
+                        value = set.distance,
+                        placeholder = "0.0",
+                        onValueChange = onDistanceChange,
+                        modifier = Modifier.weight(1.2f),
+                        keyboardType = KeyboardType.Decimal,
+                    )
+                    LabeledSetInputField(
+                        label = "MPH",
+                        value = set.speed,
+                        placeholder = "0.0",
+                        onValueChange = onSpeedChange,
+                        modifier = Modifier.weight(1.1f),
+                        keyboardType = KeyboardType.Decimal,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveSetTopRow(
+    setNumber: Int,
+    set: ActiveSetUiModel,
+    trackingType: ExerciseTrackingType,
+    onToggleCompleted: () -> Unit,
+    onRemove: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Box(
             modifier = Modifier
                 .size(28.dp)
@@ -560,50 +782,31 @@ private fun ActiveSetRow(
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
-
-        // Previous (shows current weight x reps when set is completed, otherwise historical data)
         Box(
-            modifier = Modifier.weight(1f),
-            contentAlignment = Alignment.Center,
+            modifier = Modifier.weight(1.2f),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            val previousText = if (set.isCompleted && (set.weight.isNotBlank() || set.reps.isNotBlank())) {
-                val w = set.weight.ifBlank { "-" }
-                val r = set.reps.ifBlank { "-" }
-                "$w x $r"
+            val previousText = if (set.isCompleted) {
+                currentSetSummary(set, trackingType)
             } else {
                 set.previous?.let { prev ->
-                    val w = prev.weight?.let { formatWeightDisplay(it) } ?: "-"
-                    val r = prev.reps?.toString() ?: "-"
-                    "$w x $r"
+                    formatTrackedSetSummary(
+                        trackingType = ExerciseTrackingType.fromStorage(prev.trackingType),
+                        weight = prev.weight,
+                        reps = prev.reps,
+                        durationSeconds = prev.durationSeconds,
+                        distanceMiles = prev.distanceMiles,
+                        speedMph = prev.speedMph,
+                    )
                 } ?: "-"
             }
             Text(
                 text = previousText,
                 color = if (set.isCompleted) CheckmarkGreen else TextOnDarkSecondary,
                 style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
+                textAlign = TextAlign.Start,
             )
         }
-
-        // Weight input
-        ActiveSetInputField(
-            value = set.weight,
-            placeholder = "+lbs",
-            onValueChange = onWeightChange,
-            modifier = Modifier.weight(1f),
-            keyboardType = KeyboardType.Decimal,
-        )
-
-        // Reps input
-        ActiveSetInputField(
-            value = set.reps,
-            placeholder = "Reps",
-            onValueChange = onRepsChange,
-            modifier = Modifier.weight(1f),
-            keyboardType = KeyboardType.Number,
-        )
-
-        // Checkmark button
         Spacer(modifier = Modifier.width(4.dp))
         Box(
             modifier = Modifier
@@ -620,6 +823,56 @@ private fun ActiveSetRow(
                 fontWeight = FontWeight.Bold,
             )
         }
+    }
+}
+
+@Composable
+private fun LabeledSetInputField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Number,
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = label,
+            color = TextOnDarkSecondary,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(start = 6.dp, bottom = 4.dp),
+        )
+        ActiveSetInputField(
+            value = value,
+            placeholder = placeholder,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardType = keyboardType,
+        )
+    }
+}
+
+private fun currentSetSummary(
+    set: ActiveSetUiModel,
+    trackingType: ExerciseTrackingType,
+): String {
+    val totalSeconds = ((set.durationMinutes.toIntOrNull() ?: 0) * 60) +
+        (set.durationSeconds.toIntOrNull() ?: 0)
+    return formatTrackedSetSummary(
+        trackingType = trackingType,
+        weight = set.weight.toDoubleOrNull(),
+        reps = set.reps.toIntOrNull(),
+        durationSeconds = totalSeconds.takeIf { it > 0 },
+        distanceMiles = set.distance.toDoubleOrNull(),
+        speedMph = set.speed.toDoubleOrNull(),
+    )
+}
+
+private fun activeTrackingTypeLabel(type: ExerciseTrackingType): String {
+    return when (type) {
+        ExerciseTrackingType.WEIGHT_REPS -> "Weight + Reps"
+        ExerciseTrackingType.DURATION -> "Time"
+        ExerciseTrackingType.DURATION_DISTANCE -> "Time + Distance + Speed"
     }
 }
 
@@ -1051,13 +1304,5 @@ private fun FinishWorkoutDialog(
                 }
             }
         }
-    }
-}
-
-private fun formatWeightDisplay(weight: Double): String {
-    return if (weight == weight.toLong().toDouble()) {
-        weight.toLong().toString()
-    } else {
-        weight.toString()
     }
 }

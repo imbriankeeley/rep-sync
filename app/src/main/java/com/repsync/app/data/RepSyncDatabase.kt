@@ -32,7 +32,7 @@ import com.repsync.app.data.entity.WorkoutEntity
         UserProfileEntity::class,
         BodyweightEntryEntity::class,
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -74,6 +74,40 @@ abstract class RepSyncDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE exercises ADD COLUMN trackingType TEXT NOT NULL DEFAULT 'weight_reps'"
+                )
+                db.execSQL(
+                    "ALTER TABLE completed_exercises ADD COLUMN trackingType TEXT NOT NULL DEFAULT 'weight_reps'"
+                )
+                db.execSQL(
+                    "ALTER TABLE exercise_sets ADD COLUMN durationSeconds INTEGER"
+                )
+                db.execSQL(
+                    "ALTER TABLE exercise_sets ADD COLUMN distanceMiles REAL"
+                )
+                db.execSQL(
+                    "ALTER TABLE completed_sets ADD COLUMN durationSeconds INTEGER"
+                )
+                db.execSQL(
+                    "ALTER TABLE completed_sets ADD COLUMN distanceMiles REAL"
+                )
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE exercise_sets ADD COLUMN speedMph REAL"
+                )
+                db.execSQL(
+                    "ALTER TABLE completed_sets ADD COLUMN speedMph REAL"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): RepSyncDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -81,7 +115,7 @@ abstract class RepSyncDatabase : RoomDatabase() {
                     RepSyncDatabase::class.java,
                     "repsync_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                 INSTANCE = instance
                 instance

@@ -76,4 +76,7 @@ interface WorkoutDao {
 
     @Query("SELECT COUNT(*) FROM workouts")
     suspend fun getWorkoutCount(): Int
+
+    @Query("SELECT trackingType FROM exercises WHERE name = :name ORDER BY id DESC LIMIT 1")
+    suspend fun getTrackingTypeForExerciseName(name: String): String?
 }

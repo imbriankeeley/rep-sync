@@ -1,12 +1,17 @@
 package com.repsync.app.ui.viewmodel
 
 import com.repsync.app.data.RestTimerPreferences
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.data.entity.PreviousSetResult
 
 data class ActiveSetUiModel(
     val orderIndex: Int,
     val weight: String = "",
     val reps: String = "",
+    val durationMinutes: String = "",
+    val durationSeconds: String = "",
+    val distance: String = "",
+    val speed: String = "",
     val previous: PreviousSetResult? = null,
     val isCompleted: Boolean = false,
 )
@@ -14,6 +19,8 @@ data class ActiveSetUiModel(
 data class ActiveExerciseUiModel(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String = "",
+    val trackingType: ExerciseTrackingType = ExerciseTrackingType.WEIGHT_REPS,
+    val isTrackingTypeEditable: Boolean = true,
     val sets: List<ActiveSetUiModel> = listOf(ActiveSetUiModel(orderIndex = 0)),
 )
 

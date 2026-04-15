@@ -142,6 +142,7 @@ class DayViewViewModel(application: Application) : AndroidViewModel(application)
                         workoutId = templateId,
                         name = exerciseWithSets.exercise.name,
                         orderIndex = exerciseWithSets.exercise.orderIndex,
+                        trackingType = exerciseWithSets.exercise.trackingType,
                     )
                 )
                 val templateSets = exerciseWithSets.sets.map { set ->
@@ -150,6 +151,9 @@ class DayViewViewModel(application: Application) : AndroidViewModel(application)
                         orderIndex = set.orderIndex,
                         weight = set.weight,
                         reps = set.reps,
+                        durationSeconds = set.durationSeconds,
+                        distanceMiles = set.distanceMiles,
+                        speedMph = set.speedMph,
                     )
                 }
                 if (templateSets.isNotEmpty()) {

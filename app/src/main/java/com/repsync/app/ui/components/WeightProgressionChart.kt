@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.repsync.app.ui.theme.BackgroundCardElevated
 import com.repsync.app.ui.theme.PrimaryGreen
 import com.repsync.app.ui.theme.TextOnDarkSecondary
+import com.repsync.app.util.formatWeightValue
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -67,7 +68,13 @@ fun WeightProgressionChart(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "${formatChartWeight(dataPoints.first().value)} lbs",
+                text = buildString {
+                    append(formatChartValue(dataPoints.first().value, label))
+                    if (label.isNotBlank()) {
+                        append(" ")
+                        append(label)
+                    }
+                },
                 color = lineColor,
                 style = MaterialTheme.typography.headlineMedium,
             )
@@ -118,7 +125,7 @@ fun WeightProgressionChart(
                 )
                 // Label
                 drawContext.canvas.nativeCanvas.drawText(
-                    formatChartWeight(value),
+                    formatChartValue(value, label),
                     -40f,
                     y + 10f,
                     textPaint,
@@ -182,10 +189,14 @@ fun WeightProgressionChart(
     }
 }
 
-private fun formatChartWeight(weight: Double): String {
-    return if (weight == weight.toLong().toDouble()) {
-        weight.toLong().toString()
-    } else {
-        "%.1f".format(weight)
+private fun formatChartValue(value: Double, label: String): String {
+    return when (label) {
+        "sec" -> {
+            val rounded = value.toInt().coerceAtLeast(0)
+            val minutes = rounded / 60
+            val seconds = rounded % 60
+            "%d:%02d".format(minutes, seconds)
+        }
+        else -> formatWeightValue(value)
     }
 }

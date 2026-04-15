@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.repsync.app.data.entity.CompletedExerciseWithSets
 import com.repsync.app.data.entity.CompletedWorkoutWithExercises
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.ui.theme.BackgroundCard
 import com.repsync.app.ui.theme.BackgroundCardElevated
 import com.repsync.app.ui.theme.BackgroundPrimary
@@ -50,6 +51,8 @@ import com.repsync.app.ui.theme.PrimaryGreen
 import com.repsync.app.ui.theme.TextOnDark
 import com.repsync.app.ui.theme.TextOnDarkSecondary
 import com.repsync.app.ui.viewmodel.DayViewViewModel
+import com.repsync.app.util.formatTrackedSetSummary
+import com.repsync.app.util.formatWeightValue
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -384,7 +387,12 @@ private fun ExerciseSummaryRow(
     onExerciseNameClick: (String) -> Unit = {},
 ) {
     val sortedSets = exerciseWithSets.sets.sortedBy { it.orderIndex }
-    val bestSet = exerciseWithSets.sets.maxByOrNull { it.weight ?: 0.0 }
+    val trackingType = ExerciseTrackingType.fromStorage(exerciseWithSets.exercise.trackingType)
+    val bestSet = when (trackingType) {
+        ExerciseTrackingType.WEIGHT_REPS -> exerciseWithSets.sets.maxByOrNull { it.weight ?: 0.0 }
+        ExerciseTrackingType.DURATION -> exerciseWithSets.sets.maxByOrNull { it.durationSeconds ?: 0 }
+        ExerciseTrackingType.DURATION_DISTANCE -> exerciseWithSets.sets.maxByOrNull { it.distanceMiles ?: 0.0 }
+    }
 
     Column {
         // Exercise name header
@@ -409,37 +417,12 @@ private fun ExerciseSummaryRow(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Column headers
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-        ) {
-            Text(
-                text = "SET",
-                color = TextOnDarkSecondary.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.width(36.dp),
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "WEIGHT",
-                color = TextOnDarkSecondary.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.width(80.dp),
-                textAlign = TextAlign.End,
-            )
-            Text(
-                text = "REPS",
-                color = TextOnDarkSecondary.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.width(56.dp),
-                textAlign = TextAlign.End,
-            )
-        }
+        Text(
+            text = trackingType.displayName,
+            color = TextOnDarkSecondary.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -472,45 +455,19 @@ private fun ExerciseSummaryRow(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // Weight
-                Row(
-                    modifier = Modifier.width(80.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = set.weight?.let { formatWeight(it) } ?: "-",
-                        color = TextOnDark,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "lbs",
-                        color = TextOnDarkSecondary,
-                        fontSize = 11.sp,
-                    )
-                }
-
-                // Reps
-                Row(
-                    modifier = Modifier.width(56.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = set.reps?.toString() ?: "-",
-                        color = TextOnDark,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(
-                        text = "reps",
-                        color = TextOnDarkSecondary,
-                        fontSize = 11.sp,
-                    )
-                }
+                Text(
+                    text = formatTrackedSetSummary(
+                        trackingType = trackingType,
+                        weight = set.weight,
+                        reps = set.reps,
+                        durationSeconds = set.durationSeconds,
+                        distanceMiles = set.distanceMiles,
+                        speedMph = set.speedMph,
+                    ),
+                    color = TextOnDark,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }
@@ -952,10 +909,4 @@ private fun SuccessBanner(text: String) {
     }
 }
 
-private fun formatWeight(weight: Double): String {
-    return if (weight == weight.toLong().toDouble()) {
-        weight.toLong().toString()
-    } else {
-        weight.toString()
-    }
-}
+private fun formatWeight(weight: Double): String = formatWeightValue(weight)

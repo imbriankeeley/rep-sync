@@ -22,5 +22,6 @@ data class CompletedExerciseEntity(
     val id: Long = 0,
     val completedWorkoutId: Long,
     val name: String,
-    val orderIndex: Int
+    val orderIndex: Int,
+    val trackingType: String = ExerciseTrackingType.WEIGHT_REPS.storageValue,
 )

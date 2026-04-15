@@ -10,8 +10,12 @@ import com.repsync.app.data.RestTimerPreferences
 import com.repsync.app.data.entity.CompletedExerciseEntity
 import com.repsync.app.data.entity.CompletedSetEntity
 import com.repsync.app.data.entity.CompletedWorkoutEntity
+import com.repsync.app.data.entity.ExerciseTrackingType
 import com.repsync.app.service.RestTimerService
 import com.repsync.app.service.RestTimerState
+import com.repsync.app.util.formatDistanceMiles
+import com.repsync.app.util.formatSpeedMph
+import com.repsync.app.util.formatWeightValue
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -125,19 +129,31 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
             val exercises = workoutWithExercises.exercises
                 .sortedBy { it.exercise.orderIndex }
                 .map { exerciseWithSets ->
+                    val trackingType = ExerciseTrackingType.fromStorage(
+                        exerciseWithSets.exercise.trackingType
+                    )
                     val previousSets = completedWorkoutDao.getAllPreviousSetsForExercise(
                         exerciseWithSets.exercise.name
                     )
                     ActiveExerciseUiModel(
                         name = exerciseWithSets.exercise.name,
+                        trackingType = trackingType,
+                        isTrackingTypeEditable = false,
                         sets = exerciseWithSets.sets
                             .sortedBy { it.orderIndex }
                             .mapIndexed { index, set ->
+                                val previous = previousSets.getOrNull(index)
                                 ActiveSetUiModel(
                                     orderIndex = set.orderIndex,
-                                    weight = set.weight?.let { formatWeight(it) } ?: "",
+                                    weight = set.weight?.let(::formatWeightValue) ?: "",
                                     reps = set.reps?.toString() ?: "",
-                                    previous = previousSets.getOrNull(index),
+                                    durationMinutes = set.durationSeconds?.let { (it / 60).toString() } ?: "",
+                                    durationSeconds = set.durationSeconds?.let { (it % 60).toString() } ?: "",
+                                    distance = set.distanceMiles?.let(::formatDistanceMiles) ?: "",
+                                    speed = set.speedMph?.let(::formatSpeedMph) ?: "",
+                                    previous = previous?.takeIf {
+                                        ExerciseTrackingType.fromStorage(it.trackingType) == trackingType
+                                    },
                                 )
                             }.ifEmpty {
                                 listOf(ActiveSetUiModel(orderIndex = 0))
@@ -219,6 +235,24 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
         updateSet(exerciseId, setIndex) { it.copy(reps = reps) }
     }
 
+    fun onSetDurationMinutesChange(exerciseId: String, setIndex: Int, minutes: String) {
+        updateSet(exerciseId, setIndex) { it.copy(durationMinutes = minutes.filter { ch -> ch.isDigit() }) }
+    }
+
+    fun onSetDurationSecondsChange(exerciseId: String, setIndex: Int, seconds: String) {
+        val filtered = seconds.filter { ch -> ch.isDigit() }.take(2)
+        val normalized = filtered.toIntOrNull()?.coerceAtMost(59)?.toString() ?: filtered
+        updateSet(exerciseId, setIndex) { it.copy(durationSeconds = normalized) }
+    }
+
+    fun onSetDistanceChange(exerciseId: String, setIndex: Int, distance: String) {
+        updateSet(exerciseId, setIndex) { it.copy(distance = distance) }
+    }
+
+    fun onSetSpeedChange(exerciseId: String, setIndex: Int, speed: String) {
+        updateSet(exerciseId, setIndex) { it.copy(speed = speed) }
+    }
+
     fun addSet(exerciseId: String) {
         val current = _activeWorkoutState.value ?: return
         _activeWorkoutState.value = current.copy(
@@ -238,7 +272,9 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
                 val previous = completedWorkoutDao.getPreviousSetForExercise(
                     exercise.name, newSetIndex
                 )
-                if (previous != null) {
+                if (previous != null &&
+                    ExerciseTrackingType.fromStorage(previous.trackingType) == exercise.trackingType
+                ) {
                     val updated = _activeWorkoutState.value ?: return@launch
                     _activeWorkoutState.value = updated.copy(
                         exercises = updated.exercises.map { ex ->
@@ -301,27 +337,92 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
                 else exercise
             }
         )
+        resolveTrackingType(exerciseId, name)
         loadPreviousData(exerciseId, name)
+    }
+
+    fun onExerciseTrackingTypeChange(exerciseId: String, trackingType: ExerciseTrackingType) {
+        val current = _activeWorkoutState.value ?: return
+        val targetExercise = current.exercises.find { it.id == exerciseId } ?: return
+        if (!targetExercise.isTrackingTypeEditable) return
+        _activeWorkoutState.value = current.copy(
+            exercises = current.exercises.map { exercise ->
+                if (exercise.id == exerciseId) {
+                    exercise.copy(
+                        trackingType = trackingType,
+                        isTrackingTypeEditable = false,
+                        sets = exercise.sets.map { set ->
+                            set.copy(
+                                weight = "",
+                                reps = "",
+                                durationMinutes = "",
+                                durationSeconds = "",
+                                distance = "",
+                                speed = "",
+                                previous = null,
+                                isCompleted = false,
+                            )
+                        }
+                    )
+                } else exercise
+            }
+        )
+        val exercise = _activeWorkoutState.value?.exercises?.find { it.id == exerciseId } ?: return
+        if (exercise.name.isNotBlank()) {
+            loadPreviousData(exerciseId, exercise.name)
+        }
+    }
+
+    private fun resolveTrackingType(exerciseId: String, exerciseName: String) {
+        if (exerciseName.isBlank()) return
+        viewModelScope.launch {
+            val current = _activeWorkoutState.value ?: return@launch
+            val exercise = current.exercises.find { it.id == exerciseId } ?: return@launch
+            if (!exercise.isTrackingTypeEditable) return@launch
+
+            val knownType = workoutDao.getTrackingTypeForExerciseName(exerciseName)
+                ?: completedWorkoutDao.getMostRecentTrackingTypeForExerciseName(exerciseName)
+
+            if (knownType != null) {
+                val resolvedType = ExerciseTrackingType.fromStorage(knownType)
+                val updated = _activeWorkoutState.value ?: return@launch
+                _activeWorkoutState.value = updated.copy(
+                    exercises = updated.exercises.map { activeExercise ->
+                        if (activeExercise.id == exerciseId) {
+                            activeExercise.copy(
+                                trackingType = resolvedType,
+                                isTrackingTypeEditable = false,
+                            )
+                        } else activeExercise
+                    }
+                )
+            }
+        }
     }
 
     private fun loadPreviousData(exerciseId: String, exerciseName: String) {
         if (exerciseName.isBlank()) return
         viewModelScope.launch {
             val previousSets = completedWorkoutDao.getAllPreviousSetsForExercise(exerciseName)
-            if (previousSets.isNotEmpty()) {
-                val current = _activeWorkoutState.value ?: return@launch
-                _activeWorkoutState.value = current.copy(
-                    exercises = current.exercises.map { exercise ->
-                        if (exercise.id == exerciseId) {
-                            exercise.copy(
-                                sets = exercise.sets.mapIndexed { index, set ->
-                                    set.copy(previous = previousSets.getOrNull(index))
+            val current = _activeWorkoutState.value ?: return@launch
+            _activeWorkoutState.value = current.copy(
+                exercises = current.exercises.map { exercise ->
+                    if (exercise.id == exerciseId) {
+                        exercise.copy(
+                            sets = exercise.sets.mapIndexed { index, set ->
+                                val previous = previousSets.getOrNull(index)
+                                if (previous != null &&
+                                    ExerciseTrackingType.fromStorage(previous.trackingType) == exercise.trackingType
+                                ) {
+                                    set.copy(previous = previous)
+                                } else {
+                                    set.copy(previous = null)
                                 }
-                            )
-                        } else exercise
-                    }
-                )
-            }
+                            }
+                        )
+                    } else exercise
+                }
+            )
         }
     }
 
@@ -392,6 +493,7 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
                         completedWorkoutId = completedWorkoutId,
                         name = exercise.name,
                         orderIndex = exerciseIndex,
+                        trackingType = exercise.trackingType.storageValue,
                     )
                 )
                 val completedSets = exercise.sets.mapIndexed { setIndex, set ->
@@ -400,6 +502,9 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
                         orderIndex = setIndex,
                         weight = set.weight.toDoubleOrNull(),
                         reps = set.reps.toIntOrNull(),
+                        durationSeconds = toTotalDurationSeconds(set),
+                        distanceMiles = set.distance.toDoubleOrNull(),
+                        speedMph = set.speed.toDoubleOrNull(),
                     )
                 }
                 if (completedSets.isNotEmpty()) {
@@ -493,17 +598,29 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
     private fun hasIncompleteSets(state: ActiveWorkoutUiState): Boolean {
         return state.exercises.any { exercise ->
             exercise.sets.any { set ->
-                !set.isCompleted || set.weight.isBlank() || set.reps.isBlank()
+                !set.isCompleted || !setHasRequiredValues(set, exercise.trackingType)
             }
         }
     }
 
-    private fun formatWeight(weight: Double): String {
-        return if (weight == weight.toLong().toDouble()) {
-            weight.toLong().toString()
-        } else {
-            weight.toString()
+    private fun setHasRequiredValues(
+        set: ActiveSetUiModel,
+        trackingType: ExerciseTrackingType,
+    ): Boolean {
+        return when (trackingType) {
+            ExerciseTrackingType.WEIGHT_REPS -> set.weight.isNotBlank() && set.reps.isNotBlank()
+            ExerciseTrackingType.DURATION -> toTotalDurationSeconds(set)?.let { it > 0 } == true
+            ExerciseTrackingType.DURATION_DISTANCE -> {
+                toTotalDurationSeconds(set)?.let { it > 0 } == true && set.distance.toDoubleOrNull() != null
+            }
         }
+    }
+
+    private fun toTotalDurationSeconds(set: ActiveSetUiModel): Int? {
+        val minutes = set.durationMinutes.toIntOrNull() ?: 0
+        val seconds = set.durationSeconds.toIntOrNull() ?: 0
+        val total = minutes * 60 + seconds
+        return total.takeIf { it > 0 }
     }
 
     override fun onCleared() {
