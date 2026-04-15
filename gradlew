@@ -155,10 +155,9 @@ fi
 #   * Gradle CLI options (like --stacktrace) are collected and passed after
 #     the wrapped jar.
 
-# For Darwin, add options to specify how the application appears in the dock
-if $darwin; then
-    GRADLE_OPTS="$GRADLE_OPTS \"-Xdock:name=$APP_BASE_NAME\" \"-Xdock:icon=$APP_HOME/media/gradle.icns\""
-fi
+# The wrapper script's argument parsing is intentionally kept minimal here.
+# Skip macOS dock metadata flags so paths with spaces do not get split into
+# invalid JVM arguments before Gradle starts.
 
 # shellcheck disable=SC2086
 exec "$JAVACMD" \

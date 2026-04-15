@@ -125,11 +125,14 @@ app/build/outputs/apk/release/app-release.apk
 ```
 RepSync/
 ├── docs/
-│   └── plan.md              # Full product and technical plan
-├── prompts.md                # Phased prompts for implementation
+│   ├── RELEASE_NOTES.md      # Release notes template/content
+│   ├── plan-web.md           # Separate web planning doc
+│   └── prompts-web.md        # Separate web implementation prompts
+├── 2.24plan.md               # Current Android product/technical plan
+├── 2.24prompts.md            # Current Android implementation prompts
 ├── assets/
-│   ├── repSyncLogo.png      # App logo
-│   └── references/          # Design reference screens (do not delete)
+│   ├── repSyncLogo.png       # App logo
+│   └── references/           # Design reference screens (do not delete)
 │       └── IMG_1505.PNG … IMG_1538.PNG
 ├── app/                      # Android app module
 │   ├── src/main/
@@ -141,8 +144,8 @@ RepSync/
 └── settings.gradle.kts
 ```
 
-- **Spec:** See [docs/plan.md](docs/plan.md) for the single source of truth (flows, data model, UI, distribution).
-- **Implementation guide:** See [prompts.md](docs/prompts.md) for step-by-step prompts keyed to the plan.
+- **Spec:** See [2.24plan.md](2.24plan.md) for the current Android source of truth (flows, data model, UI, distribution).
+- **Implementation guide:** See [2.24prompts.md](2.24prompts.md) for the current Android implementation prompts.
 
 ## License
 
