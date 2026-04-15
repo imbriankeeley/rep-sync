@@ -50,6 +50,7 @@ import com.repsync.app.ui.theme.InputBackground
 import com.repsync.app.ui.theme.PrimaryGreen
 import com.repsync.app.ui.theme.TextOnDark
 import com.repsync.app.ui.theme.TextOnDarkSecondary
+import com.repsync.app.ui.viewmodel.BodyweightTrendSummary
 import com.repsync.app.ui.viewmodel.ProfileViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -141,6 +142,8 @@ fun ProfileScreen(
             // Bodyweight section
             BodyweightSection(
                 latestWeight = uiState.latestBodyweight,
+                trendSummary = uiState.bodyweightTrendSummary,
+                trendHelperText = uiState.bodyweightTrendHelperText,
                 chartData = uiState.bodyweightChartData,
                 recentEntries = uiState.bodyweightEntries.reversed().take(3),
                 onAddClick = { viewModel.showAddBodyweightDialog() },
@@ -184,6 +187,8 @@ fun ProfileScreen(
 @Composable
 private fun BodyweightSection(
     latestWeight: Double?,
+    trendSummary: BodyweightTrendSummary?,
+    trendHelperText: String?,
     chartData: List<ChartDataPoint>,
     recentEntries: List<BodyweightEntryEntity>,
     onAddClick: () -> Unit,
@@ -241,6 +246,21 @@ private fun BodyweightSection(
                     )
                 }
             }
+        }
+
+        if (trendSummary != null || trendHelperText != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = trendSummary?.text ?: trendHelperText.orEmpty(),
+                color = if (trendSummary != null && !trendSummary.isStable) {
+                    PrimaryGreen
+                } else {
+                    TextOnDarkSecondary
+                },
+                fontSize = 13.sp,
+                fontWeight = if (trendSummary != null) FontWeight.Medium else FontWeight.Normal,
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))

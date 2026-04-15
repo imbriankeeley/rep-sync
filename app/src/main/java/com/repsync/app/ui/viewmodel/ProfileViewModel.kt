@@ -25,7 +25,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+data class BodyweightTrendSummary(
+    val text: String,
+    val isStable: Boolean = false,
+)
 
 data class ProfileUiState(
     val displayName: String? = null,
@@ -35,6 +42,8 @@ data class ProfileUiState(
     val bodyweightEntries: List<BodyweightEntryEntity> = emptyList(),
     val bodyweightChartData: List<ChartDataPoint> = emptyList(),
     val latestBodyweight: Double? = null,
+    val bodyweightTrendSummary: BodyweightTrendSummary? = null,
+    val bodyweightTrendHelperText: String? = null,
     val showAddBodyweightDialog: Boolean = false,
     val showEditBodyweightDialog: Boolean = false,
     val editingBodyweightEntry: BodyweightEntryEntity? = null,
@@ -176,12 +185,56 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                         value = entry.weight,
                     )
                 }
+                val trendSummary = calculateBodyweightTrend(entries)
                 _uiState.value = _uiState.value.copy(
                     bodyweightEntries = entries,
                     bodyweightChartData = chartData,
                     latestBodyweight = entries.lastOrNull()?.weight,
+                    bodyweightTrendSummary = trendSummary,
+                    bodyweightTrendHelperText = if (entries.isNotEmpty() && trendSummary == null) {
+                        "Log entries on different days to see your trend"
+                    } else {
+                        null
+                    },
                 )
             }
+        }
+    }
+
+    private fun calculateBodyweightTrend(entries: List<BodyweightEntryEntity>): BodyweightTrendSummary? {
+        val validEntries = entries.mapNotNull { entry ->
+            val date = runCatching {
+                LocalDate.parse(entry.date, DateTimeFormatter.ISO_LOCAL_DATE)
+            }.getOrNull()
+            val weight = entry.weight.takeIf { it > 0 }
+            if (date != null && weight != null) {
+                entry to date
+            } else {
+                null
+            }
+        }
+
+        if (validEntries.size < 2) return null
+
+        val oldest = validEntries.first()
+        val newest = validEntries.last()
+        val elapsedDays = ChronoUnit.DAYS.between(oldest.second, newest.second)
+        if (elapsedDays < 1) return null
+
+        val weightDelta = newest.first.weight - oldest.first.weight
+        val weeklyRate = (weightDelta / elapsedDays.toDouble()) * 7.0
+        val absoluteRate = kotlin.math.abs(weeklyRate)
+        val formattedRate = String.format(Locale.US, "%.1f", absoluteRate)
+
+        return when {
+            absoluteRate < BODYWEIGHT_STABLE_THRESHOLD_LBS_PER_WEEK -> {
+                BodyweightTrendSummary(
+                    text = "Holding steady",
+                    isStable = true,
+                )
+            }
+            weeklyRate > 0 -> BodyweightTrendSummary(text = "Gaining $formattedRate lbs/week")
+            else -> BodyweightTrendSummary(text = "Losing $formattedRate lbs/week")
         }
     }
 
@@ -319,6 +372,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 _uiState.value = _uiState.value.copy(workoutDays = days)
             }
         }
+    }
+
+    private companion object {
+        private const val BODYWEIGHT_STABLE_THRESHOLD_LBS_PER_WEEK = 0.1
     }
 
     fun toggleWorkoutDay(day: DayOfWeek) {
