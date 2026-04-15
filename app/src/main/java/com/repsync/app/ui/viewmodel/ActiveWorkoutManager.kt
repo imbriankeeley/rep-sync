@@ -84,14 +84,43 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
 
     fun hasActiveWorkout(): Boolean = _activeWorkoutState.value != null
 
+    fun isActiveWorkoutSession(workoutId: Long?): Boolean {
+        val current = _activeWorkoutState.value ?: return false
+        return if (workoutId == null) {
+            current.isQuickWorkout
+        } else {
+            !current.isQuickWorkout && current.templateId == workoutId
+        }
+    }
+
     fun loadWorkout(workoutId: Long) {
+        val current = _activeWorkoutState.value
+        if (current != null && current.templateId == workoutId && !current.isQuickWorkout) {
+            return
+        }
+
+        val existingRestTimerDurationSeconds = current?.restTimerDurationSeconds
+            ?: RestTimerPreferences.DEFAULT_DURATION_SECONDS
+
+        _activeWorkoutState.value = ActiveWorkoutUiState(
+            workoutName = "Loading workout...",
+            exercises = emptyList(),
+            elapsedSeconds = 0L,
+            isLoading = true,
+            templateId = workoutId,
+            isQuickWorkout = false,
+            restTimerDurationSeconds = existingRestTimerDurationSeconds,
+        )
+
         startedAtMillis = System.currentTimeMillis()
         startTimer()
-        loadExerciseNames()
 
         viewModelScope.launch {
             val workoutWithExercises = workoutDao.getWorkoutWithExercises(workoutId)
-                ?: return@launch
+                ?: run {
+                    _activeWorkoutState.value = null
+                    return@launch
+                }
 
             val exercises = workoutWithExercises.exercises
                 .sortedBy { it.exercise.orderIndex }
@@ -119,22 +148,35 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
             _activeWorkoutState.value = ActiveWorkoutUiState(
                 workoutName = workoutWithExercises.workout.name,
                 exercises = exercises,
+                elapsedSeconds = 0L,
                 isLoading = false,
                 templateId = workoutId,
+                restTimerDurationSeconds = existingRestTimerDurationSeconds,
             )
+
+            loadExerciseNames()
         }
     }
 
     fun startQuickWorkout() {
-        startedAtMillis = System.currentTimeMillis()
-        startTimer()
-        loadExerciseNames()
+        val current = _activeWorkoutState.value
+        if (current?.isQuickWorkout == true) return
+
+        val existingRestTimerDurationSeconds = current?.restTimerDurationSeconds
+            ?: RestTimerPreferences.DEFAULT_DURATION_SECONDS
+
         _activeWorkoutState.value = ActiveWorkoutUiState(
             workoutName = "Quick Workout",
             exercises = emptyList(),
+            elapsedSeconds = 0L,
             isLoading = false,
             isQuickWorkout = true,
+            restTimerDurationSeconds = existingRestTimerDurationSeconds,
         )
+
+        startedAtMillis = System.currentTimeMillis()
+        startTimer()
+        loadExerciseNames()
     }
 
     private fun startTimer() {

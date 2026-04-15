@@ -74,8 +74,8 @@ fun ActiveWorkoutScreen(
     onNavigateToExerciseHistory: (String) -> Unit = {},
 ) {
     // These must run before any early return so the workout actually starts
-    LaunchedEffect(Unit) {
-        if (!activeWorkoutManager.hasActiveWorkout()) {
+    LaunchedEffect(workoutId) {
+        if (!activeWorkoutManager.isActiveWorkoutSession(workoutId)) {
             if (workoutId != null) {
                 activeWorkoutManager.loadWorkout(workoutId)
             } else {
