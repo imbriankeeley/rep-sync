@@ -24,6 +24,7 @@ data class ActiveWorkoutUiState(
     val isLoading: Boolean = true,
     val showCancelDialog: Boolean = false,
     val showFinishDialog: Boolean = false,
+    val showIncompleteFinishDialog: Boolean = false,
     val isFinished: Boolean = false,
     val isCancelled: Boolean = false,
     val templateId: Long? = null,

@@ -346,19 +346,29 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
 
     fun showFinishDialog() {
         val current = _activeWorkoutState.value ?: return
-        _activeWorkoutState.value = current.copy(showFinishDialog = true)
+        _activeWorkoutState.value = if (hasIncompleteSets(current)) {
+            current.copy(showIncompleteFinishDialog = true)
+        } else {
+            current.copy(showFinishDialog = true)
+        }
     }
 
     fun dismissFinishDialog() {
         val current = _activeWorkoutState.value ?: return
-        _activeWorkoutState.value = current.copy(showFinishDialog = false)
+        _activeWorkoutState.value = current.copy(
+            showFinishDialog = false,
+            showIncompleteFinishDialog = false,
+        )
     }
 
     fun finishWorkout() {
         timerJob?.cancel()
         dismissRestTimer()
         val state = _activeWorkoutState.value ?: return
-        _activeWorkoutState.value = state.copy(showFinishDialog = false)
+        _activeWorkoutState.value = state.copy(
+            showFinishDialog = false,
+            showIncompleteFinishDialog = false,
+        )
 
         viewModelScope.launch {
             val now = System.currentTimeMillis()
@@ -478,6 +488,14 @@ class ActiveWorkoutManager(application: Application) : AndroidViewModel(applicat
                 } else exercise
             }
         )
+    }
+
+    private fun hasIncompleteSets(state: ActiveWorkoutUiState): Boolean {
+        return state.exercises.any { exercise ->
+            exercise.sets.any { set ->
+                !set.isCompleted || set.weight.isBlank() || set.reps.isBlank()
+            }
+        }
     }
 
     private fun formatWeight(weight: Double): String {

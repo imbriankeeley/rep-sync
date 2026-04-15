@@ -264,8 +264,23 @@ fun ActiveWorkoutScreen(
         // Finish Workout dialog
         if (uiState.showFinishDialog) {
             FinishWorkoutDialog(
-                onCancel = activeWorkoutManager::dismissFinishDialog,
-                onFinish = activeWorkoutManager::finishWorkout,
+                title = "Finish Workout?",
+                message = null,
+                dismissLabel = "Cancel",
+                confirmLabel = "Finish",
+                onDismiss = activeWorkoutManager::dismissFinishDialog,
+                onConfirm = activeWorkoutManager::finishWorkout,
+            )
+        }
+
+        if (uiState.showIncompleteFinishDialog) {
+            FinishWorkoutDialog(
+                title = "Workout Incomplete",
+                message = "Some sets are unchecked or still missing weight or reps. Do you still want to finish this workout?",
+                dismissLabel = "Go Back",
+                confirmLabel = "Finish Anyway",
+                onDismiss = activeWorkoutManager::dismissFinishDialog,
+                onConfirm = activeWorkoutManager::finishWorkout,
             )
         }
 
@@ -954,14 +969,18 @@ private fun CancelWorkoutDialog(
 
 @Composable
 private fun FinishWorkoutDialog(
-    onCancel: () -> Unit,
-    onFinish: () -> Unit,
+    title: String,
+    message: String?,
+    dismissLabel: String,
+    confirmLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundPrimary.copy(alpha = 0.7f))
-            .clickable { onCancel() },
+            .clickable { onDismiss() },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -975,11 +994,21 @@ private fun FinishWorkoutDialog(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Finish Workout?",
+                text = title,
                 color = TextOnDark,
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
+
+            if (!message.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = message,
+                    color = TextOnDarkSecondary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -994,11 +1023,11 @@ private fun FinishWorkoutDialog(
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(BackgroundCardElevated)
-                        .clickable { onCancel() },
+                        .clickable { onDismiss() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Cancel",
+                        text = dismissLabel,
                         color = TextOnDark,
                         style = MaterialTheme.typography.labelLarge,
                     )
@@ -1011,11 +1040,11 @@ private fun FinishWorkoutDialog(
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(PrimaryGreen)
-                        .clickable { onFinish() },
+                        .clickable { onConfirm() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "Finish",
+                        text = confirmLabel,
                         color = TextOnDark,
                         style = MaterialTheme.typography.labelLarge,
                     )
