@@ -444,6 +444,6 @@ private fun trackingTypeSelectorLabel(type: ExerciseTrackingType): String {
     return when (type) {
         ExerciseTrackingType.WEIGHT_REPS -> "Weight + Reps"
         ExerciseTrackingType.DURATION -> "Time"
-        ExerciseTrackingType.DURATION_DISTANCE -> "Time + Dist + Speed"
+        ExerciseTrackingType.DURATION_DISTANCE -> "Pace + Dist"
     }
 }
