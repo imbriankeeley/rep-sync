@@ -12,3 +12,7 @@ local.properties
 *.jks
 *.keystore
 .claude
+.xcode-derived/
+.xcode-derived-sim/
+*.xcuserstate
+xcuserdata/
