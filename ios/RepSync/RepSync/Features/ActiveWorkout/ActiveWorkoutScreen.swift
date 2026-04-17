@@ -5,6 +5,7 @@ struct ActiveWorkoutScreen: View {
     @State private var showsCancelConfirmation = false
     @State private var showsFinishWarning = false
     @State private var finishWarningMessage = ""
+    @State private var finishWarningAllowsOverride = false
 
     var body: some View {
         if let state = appModel.activeWorkoutState {
@@ -33,8 +34,17 @@ struct ActiveWorkoutScreen: View {
                         .buttonStyle(.plain)
 
                         Button {
-                            if let message = appModel.finishWorkoutWarningMessage() {
+                            if !appModel.activeWorkoutHasNamedExercises() {
+                                finishWarningMessage = "Add at least one exercise before finishing this workout."
+                                finishWarningAllowsOverride = false
+                                showsFinishWarning = true
+                            } else if !appModel.activeWorkoutHasCompletedSets() {
+                                finishWarningMessage = "Check off at least one completed set before finishing so the workout is not saved with missing data."
+                                finishWarningAllowsOverride = false
+                                showsFinishWarning = true
+                            } else if let message = appModel.finishWorkoutWarningMessage() {
                                 finishWarningMessage = message
+                                finishWarningAllowsOverride = true
                                 showsFinishWarning = true
                             } else {
                                 appModel.finishActiveWorkout()
@@ -66,8 +76,10 @@ struct ActiveWorkoutScreen: View {
             }
             .alert("Review Workout", isPresented: $showsFinishWarning) {
                 Button("Keep Editing", role: .cancel) {}
-                Button("Finish Anyway") {
-                    appModel.finishActiveWorkout()
+                if finishWarningAllowsOverride {
+                    Button("Finish Anyway") {
+                        appModel.finishActiveWorkout()
+                    }
                 }
             } message: {
                 Text(finishWarningMessage)

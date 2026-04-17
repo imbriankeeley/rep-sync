@@ -495,6 +495,22 @@ final class RepSyncAppModel: ObservableObject {
         return "Some sets are still unchecked or missing values. Review the workout before saving, or finish anyway if you intend to leave them incomplete."
     }
 
+    func activeWorkoutHasNamedExercises() -> Bool {
+        guard let activeWorkoutState else { return false }
+        return activeWorkoutState.exercises.contains { exercise in
+            !exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
+    func activeWorkoutHasCompletedSets() -> Bool {
+        guard let activeWorkoutState else { return false }
+        return activeWorkoutState.exercises.contains { exercise in
+            let trimmedName = exercise.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedName.isEmpty else { return false }
+            return exercise.sets.contains(where: \.isComplete)
+        }
+    }
+
     func hasActiveWorkoutToDiscard() -> Bool {
         guard let activeWorkoutState else { return false }
         if !activeWorkoutState.workoutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -629,6 +645,14 @@ final class RepSyncAppModel: ObservableObject {
             appleMusicLibraryPlaylists = []
             appleMusicStatusText = "Spotify selected"
             musicMessage = "Spotify is set as your workout audio provider. RepSync can open playlists in Spotify while the full SDK bridge is still pending."
+        case .youtubeMusic:
+            appleMusicCanPlayCatalog = false
+            musicNowPlaying = nil
+            isAppleMusicPlaying = false
+            appleMusicRecentItems = []
+            appleMusicLibraryPlaylists = []
+            appleMusicStatusText = "YouTube Music selected"
+            musicMessage = "YouTube Music is set as your workout audio provider. RepSync can open playlists in YouTube Music while deeper integration is still a URL bridge."
         }
     }
 
@@ -740,6 +764,15 @@ final class RepSyncAppModel: ObservableObject {
         }
     }
 
+    func setWorkoutEditorYouTubeMusicURL(_ urlString: String) {
+        workoutEditorState.musicProvider = .youtubeMusic
+        workoutEditorState.musicPlaylistURL = urlString
+        workoutEditorState.musicPlaylistID = nil
+        if workoutEditorState.musicPlaylistName?.isEmpty ?? true {
+            workoutEditorState.musicPlaylistName = "YouTube Music Playlist"
+        }
+    }
+
     func playCurrentWorkoutMix() {
         guard let activeWorkoutState else { return }
 
@@ -764,6 +797,12 @@ final class RepSyncAppModel: ObservableObject {
             } else {
                 openSpotifyApp()
             }
+        case .youtubeMusic:
+            if let playlistURL = normalizedString(activeWorkoutState.musicPlaylistURL) {
+                openYouTubeMusicURL(playlistURL)
+            } else {
+                openYouTubeMusicApp()
+            }
         case nil:
             break
         }
@@ -780,6 +819,20 @@ final class RepSyncAppModel: ObservableObject {
     func openSpotifyURL(_ urlString: String) {
         guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             openSpotifyApp()
+            return
+        }
+        UIApplication.shared.open(url)
+    }
+
+    func openYouTubeMusicApp() {
+        if let webURL = URL(string: "https://music.youtube.com") {
+            UIApplication.shared.open(webURL)
+        }
+    }
+
+    func openYouTubeMusicURL(_ urlString: String) {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            openYouTubeMusicApp()
             return
         }
         UIApplication.shared.open(url)
@@ -896,6 +949,9 @@ final class RepSyncAppModel: ObservableObject {
         } else if selectedMusicProvider == .spotify {
             appleMusicStatusText = "Spotify selected"
             musicMessage = "Spotify is set as your workout audio provider. RepSync can open playlists in Spotify while the full SDK bridge is still pending."
+        } else if selectedMusicProvider == .youtubeMusic {
+            appleMusicStatusText = "YouTube Music selected"
+            musicMessage = "YouTube Music is set as your workout audio provider. RepSync can open playlists in YouTube Music while deeper integration is still a URL bridge."
         }
     }
 
@@ -995,6 +1051,8 @@ final class RepSyncAppModel: ObservableObject {
             return playlistName.map { "Apple Music: \($0)" } ?? "Apple Music connected"
         case .spotify:
             return playlistName.map { "Spotify: \($0)" } ?? "Spotify linked"
+        case .youtubeMusic:
+            return playlistName.map { "YouTube Music: \($0)" } ?? "YouTube Music linked"
         }
     }
 

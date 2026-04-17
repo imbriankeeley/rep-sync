@@ -9,6 +9,7 @@ enum RepSyncTab: String, CaseIterable, Hashable {
 enum MusicProvider: String, CaseIterable, Identifiable {
     case appleMusic = "Apple Music"
     case spotify = "Spotify"
+    case youtubeMusic = "YouTube Music"
 
     var id: String { rawValue }
 }

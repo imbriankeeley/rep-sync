@@ -1,152 +1,135 @@
 # RepSync
 
-A simple, **offline-first** Android workout app. Log workouts, build templates, track progress—all on your device. No account required.
+RepSync is a gym-focused workout tracker for **Android and iOS**. It is built for fast logging, reusable workout templates, and progress tracking without forcing accounts or bloated setup.
+
+## Platform Model
+
+- **Android**: offline-first and local-only. Workout data stays on the device with no cloud sync requirement.
+- **iOS**: local-first with Core Data persistence and CloudKit-backed sync between devices when iCloud is available.
 
 ## Features
 
-- **Guest-first** — Use the app immediately; optional local profile (name, avatar) only.
-- **Workout templates** — Create and save workouts with exercises and sets; start from a template anytime.
-- **Quick Workout** — Add exercises on the fly without a template.
-- **Calendar** — Month view with completed workouts; tap a day to see details, copy workouts to other days, or save a day's workout as a template.
-- **Progress** — "Previous" weight/reps per exercise from your history.
-- **Local only** — All data stays on your device (Room/SQLite). No cloud, no sign-in in v1.
+- **Workout templates**: build repeatable workout plans and start from them anytime.
+- **Quick logging**: create a workout on the fly without extra setup.
+- **History and progress**: review completed sessions and compare previous performance.
+- **Compact gym UI**: dark, practical screens optimized for logging during training.
+- **Guest-friendly**: no required sign-in flow.
+
+## Tech Stack
+
+### Android
+
+- Kotlin 2.1
+- Android Gradle Plugin 8.7.3
+- Jetpack Compose + Material 3
+- Navigation Compose
+- Room + SQLite
+- DataStore
+
+### iOS
+
+- SwiftUI
+- Core Data
+- CloudKit integration through `NSPersistentCloudKitContainer`
 
 ## Requirements
 
-- **Android** only (no iOS in initial scope).
-- Min SDK 26; target SDK 35.
-- **Architecture:** Kotlin, Jetpack Compose, single-activity, MVVM.
+### Android
 
-## Building the App
+- Android Studio
+- JDK 17+
+- Min SDK 26
 
-### Prerequisites
+### iOS
 
-- [Android Studio](https://developer.android.com/studio) (or the Android SDK + command-line tools).
-- JDK 17+.
+- Xcode 16+ recommended
+- iOS simulator or physical iPhone/iPad for local testing
+- iCloud account enabled on device/simulator for CloudKit sync testing
 
-### Build Commands
+## Building
 
-**Debug (development):**
+### Android
+
+Debug build:
+
 ```bash
 ./gradlew assembleDebug
 ```
-Output: `app/build/outputs/apk/debug/app-debug.apk`
 
-**Release (unsigned):**
-```bash
-./gradlew assembleRelease
-```
-Output: `app/build/outputs/apk/release/app-release-unsigned.apk`
+Install to a connected device or emulator:
 
-**Release (signed, local only — see [Signing for Release](#signing-for-release) below):**
-```bash
-./gradlew assembleRelease
-```
-Output: `app/build/outputs/apk/release/app-release.apk`
-
-**Debug APK (GitHub Releases / CI):**
-```bash
-./gradlew assembleDebug
-```
-Output: `app/build/outputs/apk/debug/app-debug.apk`
-
-### Run on a Device
-
-Install the debug APK directly:
 ```bash
 ./gradlew installDebug
 ```
-Or open the project in Android Studio and run on an emulator or connected device.
 
-## Signing for Release
-
-To produce a signed APK suitable for distribution you need a Java keystore. **Never commit your keystore or passwords to the repo.**
-
-### 1. Generate a Keystore (one-time)
-
-```bash
-keytool -genkeypair -v \
-  -keystore repsync-release.jks \
-  -alias repsync \
-  -keyalg RSA -keysize 2048 \
-  -validity 10000
-```
-
-Store the `.jks` file somewhere safe outside the repo.
-
-### 2. Configure Signing Properties
-
-Create (or edit) `~/.gradle/gradle.properties` and add:
-
-```properties
-REPSYNC_KEYSTORE_FILE=/absolute/path/to/repsync-release.jks
-REPSYNC_KEYSTORE_PASSWORD=your_store_password
-REPSYNC_KEY_ALIAS=repsync
-REPSYNC_KEY_PASSWORD=your_key_password
-```
-
-The `app/build.gradle.kts` already reads these properties. When they are set, `assembleRelease` produces a signed APK. When they are absent, the build falls back to an unsigned APK.
-
-### 3. Build the Signed APK
+Release build:
 
 ```bash
 ./gradlew assembleRelease
 ```
 
-The signed APK is at:
+Output paths:
+
+- `app/build/outputs/apk/debug/app-debug.apk`
+- `app/build/outputs/apk/release/app-release-unsigned.apk`
+
+### iOS
+
+Open the Xcode project:
+
+```bash
+open ios/RepSync/RepSync.xcodeproj
 ```
-app/build/outputs/apk/release/app-release.apk
-```
 
-> **Note:** GitHub release automation in this repo publishes the debug APK and does not require signing secrets.
+Then build and run the `RepSync` scheme in Xcode on a simulator or device.
 
-## Distribution via Obtainium
+For CloudKit/device-to-device persistence verification on iOS:
 
-[Obtainium](https://github.com/ImranR98/Obtainium) installs and updates Android apps directly from GitHub Releases—no app store required.
+1. Sign into the same iCloud account on both devices.
+2. Run the app with iCloud/CloudKit enabled.
+3. Create or edit workout data on one device.
+4. Confirm the change appears on the other device after sync completes.
 
-### For Users
+## Data Behavior
 
-1. Install [Obtainium](https://github.com/ImranR98/Obtainium) on your Android device.
-2. Open Obtainium and tap **Add App**.
-3. Enter this repo's URL as the source (e.g. `https://github.com/<user>/RepSync`).
-4. Obtainium will find the latest GitHub Release and its APK asset.
-5. Install (and later update) from there.
+- **Android** uses local storage only. Room and SQLite are the source of truth.
+- **iOS** uses Core Data locally and can mirror data through CloudKit across devices.
+- If CloudKit is unavailable on iOS, the app still uses local persistence on that device.
 
-### For Maintainers — Publishing a Release
+## Distribution
 
-1. Bump `versionCode` and `versionName` in `app/build.gradle.kts`.
-2. Push your changes to GitHub.
-3. Create and push a tag matching the version, for example `v1.0.5`.
-4. GitHub Actions will build `app/build/outputs/apk/debug/app-debug.apk` and publish it to a GitHub Release for that tag.
-5. Confirm the release contains the debug APK asset. Obtainium users who added this repo will see the update.
+### Android
+
+Android releases can be distributed as APKs, including through GitHub Releases / Obtainium workflows already in this repo.
+
+### iOS
+
+iOS distribution is expected through standard Apple tooling such as local Xcode installs, TestFlight, or App Store delivery when configured.
 
 ## Repo Structure
 
-```
+```text
 RepSync/
-├── docs/
-│   ├── RELEASE_NOTES.md      # Release notes template/content
-│   ├── plan-web.md           # Separate web planning doc
-│   └── prompts-web.md        # Separate web implementation prompts
-├── 2.24plan.md               # Current Android product/technical plan
-├── 2.24prompts.md            # Current Android implementation prompts
-├── assets/
-│   ├── repSyncLogo.png       # App logo
-│   └── references/           # Design reference screens (do not delete)
-│       └── IMG_1505.PNG … IMG_1538.PNG
 ├── app/                      # Android app module
-│   ├── src/main/
-│   │   ├── java/com/repsync/app/   # Kotlin source
-│   │   ├── res/                     # Resources (drawables, values, themes)
-│   │   └── AndroidManifest.xml
-│   └── build.gradle.kts
-├── build.gradle.kts          # Root build file
+├── ios/RepSync/             # iOS app project
+├── docs/
+│   ├── RELEASE_NOTES.md
+│   ├── plan-web.md
+│   └── prompts-web.md
+├── 2.24plan.md              # Android planning reference
+├── 2.24prompts.md           # Android implementation prompts
+├── plan.md                  # Current iOS planning reference
+├── assets/
+├── build.gradle.kts
 └── settings.gradle.kts
 ```
 
-- **Spec:** See [2.24plan.md](2.24plan.md) for the current Android source of truth (flows, data model, UI, distribution).
-- **Implementation guide:** See [2.24prompts.md](2.24prompts.md) for the current Android implementation prompts.
+## Notes
+
+- The Android app remains intentionally offline-only.
+- The iOS app supports persistence between devices through CloudKit when available.
+- Current source code and dated plan docs should be treated as the most accurate references for active development.
 
 ## License
 
-See [LICENSE](LICENSE) in this repo, if present.
+See [LICENSE](LICENSE) if present.

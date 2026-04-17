@@ -286,8 +286,32 @@ private struct WorkoutAudioEditorCard: View {
                     Text("Paste a Spotify playlist link")
                         .font(.system(size: 12))
                         .foregroundStyle(RepSyncTheme.textSecondary)
+                } else if appModel.selectedMusicProvider == .youtubeMusic {
+                    Text("Paste a YouTube Music playlist link for this workout. RepSync will open it from the home widget.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+
+                    TextField(
+                        "https://music.youtube.com/playlist?list=...",
+                        text: Binding(
+                            get: { appModel.workoutEditorState.musicPlaylistURL ?? "" },
+                            set: { appModel.setWorkoutEditorYouTubeMusicURL($0) }
+                        )
+                    )
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(RepSyncTheme.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Text("Paste a YouTube Music playlist link")
+                        .font(.system(size: 12))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
                 } else {
-                    Text("Choose Apple Music or Spotify on the Home or Profile screen to attach a playlist to this workout.")
+                    Text("Choose Apple Music, Spotify, or YouTube Music on the Home or Profile screen to attach a playlist to this workout.")
                         .font(.system(size: 14))
                         .foregroundStyle(RepSyncTheme.textSecondary)
                 }

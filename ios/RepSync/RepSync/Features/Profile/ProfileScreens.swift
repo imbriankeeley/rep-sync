@@ -383,7 +383,7 @@ struct EditProfileScreen: View {
                                 .font(.system(size: 13))
                                 .foregroundStyle(RepSyncTheme.textSecondary)
 
-                            HStack(spacing: 10) {
+                            VStack(spacing: 10) {
                                 Button("Apple Music") {
                                     appModel.selectMusicProvider(.appleMusic)
                                 }
@@ -394,15 +394,27 @@ struct EditProfileScreen: View {
                                 .background(appModel.selectedMusicProvider == .appleMusic ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                                Button("Spotify") {
-                                    appModel.selectMusicProvider(.spotify)
+                                HStack(spacing: 10) {
+                                    Button("Spotify") {
+                                        appModel.selectMusicProvider(.spotify)
+                                    }
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 40)
+                                    .background(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                    Button("YouTube Music") {
+                                        appModel.selectMusicProvider(.youtubeMusic)
+                                    }
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(appModel.selectedMusicProvider == .youtubeMusic ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 40)
+                                    .background(appModel.selectedMusicProvider == .youtubeMusic ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             }
                         }
                         .padding(.top, 12)

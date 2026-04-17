@@ -81,9 +81,10 @@ struct HomeScreen: View {
         .confirmationDialog("Choose Music Provider", isPresented: $appModel.showsMusicProviderPicker) {
             Button("Apple Music") { appModel.selectMusicProvider(.appleMusic) }
             Button("Spotify") { appModel.selectMusicProvider(.spotify) }
+            Button("YouTube Music") { appModel.selectMusicProvider(.youtubeMusic) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Apple Music is available now. Spotify can already be saved as your provider and opened from workout mixes while the full playback bridge is still pending.")
+            Text("Apple Music has native playback controls here. Spotify and YouTube Music can be saved as providers and opened from workout mixes through URL bridges.")
         }
     }
 }
@@ -98,7 +99,7 @@ private struct HomeMusicWidget: View {
                     Text("Workout Audio")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(RepSyncTheme.textPrimary)
-                    Text("Connect Apple Music or Spotify controls here for faster workout sessions.")
+                    Text("Connect Apple Music, Spotify, or YouTube Music controls here for faster workout sessions.")
                         .font(.system(size: 14))
                         .foregroundStyle(RepSyncTheme.textSecondary)
                     HStack(spacing: 10) {
@@ -153,6 +154,54 @@ private struct HomeMusicWidget: View {
 
                         Button("Open Spotify") {
                             appModel.openSpotifyApp()
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(RepSyncTheme.cardElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Button("Change Provider") {
+                        appModel.showMusicProviderPicker()
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(RepSyncTheme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            } else if appModel.selectedMusicProvider == .youtubeMusic {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("YouTube Music")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text(appModel.musicMessage ?? "YouTube Music is ready as your workout audio provider.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                    if appModel.activeWorkoutState?.musicProvider == .youtubeMusic,
+                       let playlistName = appModel.activeWorkoutState?.musicPlaylistName,
+                       !playlistName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Current mix: \(playlistName)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                    }
+                    HStack(spacing: 10) {
+                        if appModel.activeWorkoutState?.musicProvider == .youtubeMusic {
+                            Button("Open Workout Mix") {
+                                appModel.playCurrentWorkoutMix()
+                            }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 40)
+                            .background(RepSyncTheme.primaryGreen)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+
+                        Button("Open YT Music") {
+                            appModel.openYouTubeMusicApp()
                         }
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(RepSyncTheme.textPrimary)
