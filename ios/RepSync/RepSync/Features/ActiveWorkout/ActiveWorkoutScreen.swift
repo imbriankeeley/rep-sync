@@ -84,6 +84,10 @@ struct ActiveWorkoutScreen: View {
             } message: {
                 Text(finishWarningMessage)
             }
+            .sheet(isPresented: $appModel.showsRestTimerSheet) {
+                RestTimerSheet()
+                    .presentationDetents([.medium])
+            }
         } else {
             Color.clear.onAppear { appModel.pop() }
         }
@@ -96,9 +100,30 @@ struct ActiveWorkoutScreen: View {
                     appModel.leaveActiveWorkoutOpen()
                 }
                 Spacer()
-                Text(appModel.activeWorkoutState?.elapsedText ?? "0:00")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(RepSyncTheme.textPrimary)
+                VStack(spacing: 4) {
+                    Text(appModel.activeWorkoutState?.elapsedText ?? "0:00")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Button {
+                        appModel.showRestTimerSheet()
+                    } label: {
+                        Text(appModel.restTimerSecondsRemaining > 0 ? "Rest \(formatRestTimer(appModel.restTimerSecondsRemaining))" : "Rest \(formatRestTimer(appModel.restTimerDurationSeconds))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(appModel.restTimerSecondsRemaining > 0 ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        if appModel.restTimerSecondsRemaining > 0 {
+                            Button("Stop Rest Timer") {
+                                appModel.cancelRestTimer()
+                            }
+                        }
+                    }
+                }
                 Spacer()
                 RepSyncHeaderButton(title: "X", background: RepSyncTheme.destructive) {
                     if appModel.hasActiveWorkoutToDiscard() {
@@ -157,6 +182,18 @@ struct ActiveWorkoutScreen: View {
             exercises: []
         )
         return fallbackState[keyPath: keyPath]
+    }
+
+    private func formatRestTimer(_ seconds: Int) -> String {
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        let minutes = seconds / 60
+        let remainder = seconds % 60
+        if remainder == 0 {
+            return "\(minutes)m"
+        }
+        return "\(minutes)m \(remainder)s"
     }
 }
 
@@ -245,7 +282,7 @@ private struct ActiveExerciseCard: View {
                                     .foregroundStyle(RepSyncTheme.textSecondary)
                             }
                             Button {
-                                set.isComplete.toggle()
+                                appModel.toggleSetCompleted(for: exercise.id, setID: set.id)
                             } label: {
                                 Image(systemName: set.isComplete ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(set.isComplete ? RepSyncTheme.checkmark : RepSyncTheme.textSecondary)
@@ -312,5 +349,97 @@ private struct ActiveExerciseCard: View {
             .frame(height: 40)
             .background(RepSyncTheme.input)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct RestTimerSheet: View {
+    @EnvironmentObject private var appModel: RepSyncAppModel
+
+    private let presets = [30, 60, 90, 120]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Rest Timer")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            Text("Choose a preset or set a custom number of seconds.")
+                .font(.system(size: 14))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+
+            HStack(spacing: 8) {
+                ForEach(presets, id: \.self) { preset in
+                    Button(label(for: preset)) {
+                        appModel.setRestTimerDuration(seconds: preset)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(appModel.restTimerDurationSeconds == preset ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 40)
+                    .background(appModel.restTimerDurationSeconds == preset ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .buttonStyle(.plain)
+                }
+            }
+
+            HStack(spacing: 12) {
+                TextField("Custom sec", text: $appModel.customRestTimerSeconds)
+                    .keyboardType(.numberPad)
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .padding(.horizontal, 16)
+                    .frame(height: 46)
+                    .background(RepSyncTheme.input)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Button("Set") {
+                    appModel.applyCustomRestTimerDuration()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .padding(.horizontal, 18)
+                .frame(height: 46)
+                .background(RepSyncTheme.primaryGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 12) {
+                Button("Disable") {
+                    appModel.setRestTimerDuration(seconds: 0)
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(RepSyncTheme.cardElevated)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(.plain)
+
+                Button("Done") {
+                    appModel.dismissRestTimerSheet()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(RepSyncTheme.primaryGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .padding(24)
+        .background(RepSyncTheme.background)
+    }
+
+    private func label(for seconds: Int) -> String {
+        switch seconds {
+        case 30: return "30s"
+        case 60: return "1m"
+        case 90: return "1m 30s"
+        case 120: return "2m"
+        default: return "\(seconds)s"
+        }
     }
 }

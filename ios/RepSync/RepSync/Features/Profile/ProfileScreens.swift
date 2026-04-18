@@ -50,8 +50,8 @@ struct ProfileScreen: View {
                             Button {
                                 appModel.showAddBodyweightSheet()
                             } label: {
-                                Text("+")
-                                    .font(.system(size: 18, weight: .bold))
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(RepSyncTheme.textPrimary)
                                     .frame(width: 32, height: 32)
                                     .background(RepSyncTheme.primaryGreen)
@@ -90,19 +90,24 @@ struct ProfileScreen: View {
                             .foregroundStyle(RepSyncTheme.textSecondary)
 
                         ForEach(appModel.profileState.recentEntries) { entry in
-                            HStack {
+                            HStack(spacing: 12) {
                                 Text(entry.dateText)
                                     .font(.system(size: 14))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
-                                Spacer()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 Text(entry.weightText)
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(RepSyncTheme.textPrimary)
+                                    .frame(minWidth: 84, alignment: .trailing)
                                 Button {
                                     appModel.beginEditBodyweight(entry)
                                 } label: {
                                     Image(systemName: "square.and.pencil")
+                                        .font(.system(size: 13, weight: .semibold))
                                         .foregroundStyle(RepSyncTheme.textSecondary)
+                                        .frame(width: 28, height: 28)
+                                        .background(RepSyncTheme.card)
+                                        .clipShape(Circle())
                                 }
                                 .buttonStyle(.plain)
                                 Button {
@@ -473,44 +478,54 @@ struct BodyweightEntriesScreen: View {
 
             ScrollView {
                 VStack(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button(appModel.bodyweightEntriesState.filterText) {
-                            appModel.showBodyweightFilter()
-                        }
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(RepSyncTheme.textPrimary)
-                        .padding(.horizontal, 16)
-                        .frame(height: 44)
-                        .background(RepSyncTheme.cardElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    HStack(alignment: .center) {
+                        Text(appModel.bodyweightEntriesState.filterText)
+                            .font(.system(size: appModel.bodyweightEntriesState.startDate == nil ? 14 : 13, weight: appModel.bodyweightEntriesState.startDate == nil ? .regular : .medium))
+                            .foregroundStyle(appModel.bodyweightEntriesState.startDate == nil ? RepSyncTheme.textSecondary : RepSyncTheme.primaryGreen)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if appModel.bodyweightEntriesState.startDate != nil {
+                        if appModel.bodyweightEntriesState.startDate == nil {
+                            Button("Filter by Date") {
+                                appModel.showBodyweightFilter()
+                            }
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(RepSyncTheme.cardElevated)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        } else {
                             Button("Clear") {
                                 appModel.clearBodyweightFilter()
                             }
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(RepSyncTheme.textPrimary)
-                            .padding(.horizontal, 16)
-                            .frame(height: 44)
-                            .background(RepSyncTheme.cardElevated)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(RepSyncTheme.destructive.opacity(0.8))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                     }
 
                     ForEach(appModel.bodyweightEntriesState.filteredEntries) { entry in
-                        HStack {
+                        HStack(spacing: 12) {
                             Text(entry.dateText)
                                 .font(.system(size: 14))
                                 .foregroundStyle(RepSyncTheme.textSecondary)
-                            Spacer()
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             Text(entry.weightText)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(minWidth: 84, alignment: .trailing)
                             Button {
                                 appModel.beginEditBodyweight(entry)
                             } label: {
                                 Image(systemName: "square.and.pencil")
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
+                                    .frame(width: 28, height: 28)
+                                    .background(RepSyncTheme.cardElevated)
+                                    .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
                             Button {

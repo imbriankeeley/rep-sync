@@ -155,7 +155,7 @@ final class RepSyncStore {
         try save()
     }
 
-    func createTemplateCopy(from completedWorkoutID: UUID) throws {
+    func createTemplateCopy(from completedWorkoutID: UUID, templateName: String? = nil) throws {
         guard let completed = try fetchCompletedWorkout(id: completedWorkoutID) else { return }
         let exercises = try fetchCompletedExercises(workoutID: completedWorkoutID)
         let drafts = try exercises.map { exercise in
@@ -166,7 +166,12 @@ final class RepSyncStore {
                 trackingType: ExerciseTrackingKind(rawValue: exercise.trackingType ?? "") ?? .weightReps
             )
         }
-        _ = try upsertWorkoutTemplate(id: nil, name: completed.name ?? "Workout", exercises: drafts)
+        let resolvedName = templateName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = try upsertWorkoutTemplate(
+            id: nil,
+            name: resolvedName?.isEmpty == false ? resolvedName! : (completed.name ?? "Workout"),
+            exercises: drafts
+        )
     }
 
     func deleteCompletedWorkout(id: UUID) throws {

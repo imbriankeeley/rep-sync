@@ -2,6 +2,8 @@ import SwiftUI
 
 struct DayViewScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var templateSourceWorkoutID: UUID?
+    @State private var templateName = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,7 +70,10 @@ struct DayViewScreen: View {
 
                                 HStack(spacing: 8) {
                                     actionPill("Copy", fill: RepSyncTheme.cardElevated) { appModel.copyCompletedWorkoutToTemplate(id: workout.id) }
-                                    actionPill("Template", fill: RepSyncTheme.cardElevated) { appModel.copyCompletedWorkoutToTemplate(id: workout.id) }
+                                    actionPill("Template", fill: RepSyncTheme.cardElevated) {
+                                        templateSourceWorkoutID = workout.id
+                                        templateName = workout.title
+                                    }
                                     actionPill("Remove", fill: RepSyncTheme.destructive) { appModel.deleteCompletedWorkout(id: workout.id) }
                                 }
                             }
@@ -81,6 +86,26 @@ struct DayViewScreen: View {
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
+        .alert("Save as Template", isPresented: Binding(
+            get: { templateSourceWorkoutID != nil },
+            set: { if !$0 { templateSourceWorkoutID = nil } }
+        )) {
+            TextField("Workout Name", text: $templateName)
+            Button("Cancel", role: .cancel) {
+                templateSourceWorkoutID = nil
+            }
+            Button("Save") {
+                if let templateSourceWorkoutID {
+                    appModel.copyCompletedWorkoutToTemplate(
+                        id: templateSourceWorkoutID,
+                        templateName: templateName
+                    )
+                }
+                templateSourceWorkoutID = nil
+            }
+        } message: {
+            Text("Name this workout before saving it to your templates.")
+        }
     }
 
     private func actionPill(_ title: String, fill: Color, action: @escaping () -> Void) -> some View {

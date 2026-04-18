@@ -102,7 +102,14 @@ struct WorkoutListItem: Identifiable {
     let id: UUID
     let name: String
     let exerciseCount: Int
+    let exercises: [WorkoutExerciseSummary]
     let musicSummary: String?
+}
+
+struct WorkoutExerciseSummary: Identifiable {
+    let id: UUID
+    let name: String
+    let setCount: Int
 }
 
 struct WorkoutsScreenState {

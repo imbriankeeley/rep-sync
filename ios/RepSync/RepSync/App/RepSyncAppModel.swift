@@ -5,6 +5,7 @@ import UIKit
 import SwiftUI
 import MusicKit
 import MediaPlayer
+import AudioToolbox
 @preconcurrency import UserNotifications
 
 @MainActor
@@ -49,9 +50,14 @@ final class RepSyncAppModel: ObservableObject {
     @Published var showsBodyweightFilterSheet = false
     @Published var bodyweightFilterStartDate = Calendar.repsync.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     @Published var bodyweightFilterEndDate = Date()
+    @Published var restTimerDurationSeconds = 90
+    @Published var restTimerSecondsRemaining = 0
+    @Published var showsRestTimerSheet = false
+    @Published var customRestTimerSeconds = ""
 
     private let store: RepSyncStore
     private var timerCancellable: AnyCancellable?
+    private var restTimerCancellable: AnyCancellable?
     private var musicCancellables: Set<AnyCancellable> = []
     private var monthCursor = Calendar.repsync.startOfDay(for: Date())
     private var selectedTemplateID: UUID?
@@ -65,6 +71,7 @@ final class RepSyncAppModel: ObservableObject {
             : "Local data stays primary. CloudKit continuity will be enabled after the iCloud container identifier is configured in Xcode."
         configureMusicObservers()
         loadMusicPreferences()
+        loadRestTimerPreference()
         refreshAll()
     }
 
@@ -88,7 +95,8 @@ final class RepSyncAppModel: ObservableObject {
         do {
             workoutsState.workouts = try store.fetchWorkoutTemplates().compactMap { template in
                 guard let id = template.id else { return nil }
-                let exerciseCount = (try? store.fetchTemplateExercises(templateID: id).count) ?? 0
+                let exercises = (try? store.fetchTemplateExercises(templateID: id)) ?? []
+                let exerciseCount = exercises.count
                 let musicPreferences = try? store.workoutMusicPreferences(for: id)
                 let musicSummary = musicSummary(
                     providerRawValue: musicPreferences?.provider,
@@ -98,6 +106,13 @@ final class RepSyncAppModel: ObservableObject {
                     id: id,
                     name: template.name ?? "Workout",
                     exerciseCount: exerciseCount,
+                    exercises: exercises.map {
+                        WorkoutExerciseSummary(
+                            id: $0.id ?? UUID(),
+                            name: $0.name ?? "",
+                            setCount: max(Int($0.setCount), 1)
+                        )
+                    },
                     musicSummary: musicSummary
                 )
             }
@@ -287,14 +302,15 @@ final class RepSyncAppModel: ObservableObject {
     private func closeActiveWorkout(popNavigation: Bool) {
         timerCancellable?.cancel()
         timerCancellable = nil
-
-        if popNavigation, navigationPath.last == .activeWorkout {
-            navigationPath.removeLast()
-        }
-
+        restTimerCancellable?.cancel()
+        restTimerCancellable = nil
+        restTimerSecondsRemaining = 0
+        let shouldPopNavigation = popNavigation && navigationPath.last == .activeWorkout
+        activeWorkoutState = nil
         activeWorkoutBanner = nil
-        Task { @MainActor [weak self] in
-            self?.activeWorkoutState = nil
+
+        if shouldPopNavigation {
+            navigationPath.removeLast()
         }
     }
 
@@ -477,6 +493,45 @@ final class RepSyncAppModel: ObservableObject {
         guard let index = activeWorkoutState?.exercises.firstIndex(where: { $0.id == exerciseID }) else { return }
         activeWorkoutState?.exercises[index].trackingType = trackingType
         activeWorkoutState?.exercises[index].isTrackingTypeLocked = true
+    }
+
+    func toggleSetCompleted(for exerciseID: UUID, setID: UUID) {
+        guard let exerciseIndex = activeWorkoutState?.exercises.firstIndex(where: { $0.id == exerciseID }),
+              let setIndex = activeWorkoutState?.exercises[exerciseIndex].sets.firstIndex(where: { $0.id == setID }) else {
+            return
+        }
+
+        activeWorkoutState?.exercises[exerciseIndex].sets[setIndex].isComplete.toggle()
+        if activeWorkoutState?.exercises[exerciseIndex].sets[setIndex].isComplete == true {
+            startRestTimer()
+        }
+    }
+
+    func showRestTimerSheet() {
+        customRestTimerSeconds = restTimerDurationSeconds > 0 ? "\(restTimerDurationSeconds)" : ""
+        showsRestTimerSheet = true
+    }
+
+    func dismissRestTimerSheet() {
+        showsRestTimerSheet = false
+    }
+
+    func setRestTimerDuration(seconds: Int) {
+        restTimerDurationSeconds = max(seconds, 0)
+        customRestTimerSeconds = restTimerDurationSeconds > 0 ? "\(restTimerDurationSeconds)" : ""
+        persistRestTimerPreference()
+        showsRestTimerSheet = false
+    }
+
+    func applyCustomRestTimerDuration() {
+        guard let seconds = Int(customRestTimerSeconds), seconds >= 0 else { return }
+        setRestTimerDuration(seconds: seconds)
+    }
+
+    func cancelRestTimer() {
+        restTimerCancellable?.cancel()
+        restTimerCancellable = nil
+        restTimerSecondsRemaining = 0
     }
 
     func finishWorkoutWarningMessage() -> String? {
@@ -838,9 +893,9 @@ final class RepSyncAppModel: ObservableObject {
         UIApplication.shared.open(url)
     }
 
-    func copyCompletedWorkoutToTemplate(id: UUID) {
+    func copyCompletedWorkoutToTemplate(id: UUID, templateName: String? = nil) {
         do {
-            try store.createTemplateCopy(from: id)
+            try store.createTemplateCopy(from: id, templateName: templateName)
             refreshAll()
         } catch {
             print("Failed to copy workout to template: \(error)")
@@ -893,6 +948,25 @@ final class RepSyncAppModel: ObservableObject {
                 self.refreshBanner()
             }
         refreshBanner()
+    }
+
+    private func startRestTimer() {
+        guard restTimerDurationSeconds > 0 else { return }
+        restTimerCancellable?.cancel()
+        restTimerSecondsRemaining = restTimerDurationSeconds
+        restTimerCancellable = Timer.publish(every: 1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                guard self.restTimerSecondsRemaining > 1 else {
+                    self.restTimerCancellable?.cancel()
+                    self.restTimerCancellable = nil
+                    self.restTimerSecondsRemaining = 0
+                    self.notifyRestTimerCompleted()
+                    return
+                }
+                self.restTimerSecondsRemaining -= 1
+            }
     }
 
     private func refreshBanner() {
@@ -952,6 +1026,27 @@ final class RepSyncAppModel: ObservableObject {
         } else if selectedMusicProvider == .youtubeMusic {
             appleMusicStatusText = "YouTube Music selected"
             musicMessage = "YouTube Music is set as your workout audio provider. RepSync can open playlists in YouTube Music while deeper integration is still a URL bridge."
+        }
+    }
+
+    private func loadRestTimerPreference() {
+        do {
+            if let storedValue = try store.stringPreference(for: restTimerDurationKey),
+               let seconds = Int(storedValue),
+               seconds >= 0 {
+                restTimerDurationSeconds = seconds
+            }
+            customRestTimerSeconds = "\(restTimerDurationSeconds)"
+        } catch {
+            print("Failed to load rest timer preference: \(error)")
+        }
+    }
+
+    private func persistRestTimerPreference() {
+        do {
+            try store.setStringPreference("\(restTimerDurationSeconds)", for: restTimerDurationKey)
+        } catch {
+            print("Failed to persist rest timer preference: \(error)")
         }
     }
 
@@ -1062,6 +1157,13 @@ final class RepSyncAppModel: ObservableObject {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func notifyRestTimerCompleted() {
+        let feedback = UINotificationFeedbackGenerator()
+        feedback.notificationOccurred(.success)
+        AudioServicesPlaySystemSound(1005)
+        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+    }
+
     private var isRunningInSimulator: Bool {
         ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
     }
@@ -1107,4 +1209,5 @@ final class RepSyncAppModel: ObservableObject {
 
     private let musicProviderKey = "music_provider"
     private let musicPromptDismissedKey = "music_prompt_dismissed"
+    private let restTimerDurationKey = "rest_timer_duration_seconds"
 }

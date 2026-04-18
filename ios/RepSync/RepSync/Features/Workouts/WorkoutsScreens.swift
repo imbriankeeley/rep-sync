@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WorkoutsListScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var selectedWorkout: WorkoutListItem?
 
     private var filteredWorkouts: [WorkoutListItem] {
         let query = appModel.workoutsState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,6 +74,10 @@ struct WorkoutsListScreen: View {
                                     }
                                 }
                             }
+                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .onTapGesture {
+                                selectedWorkout = workout
+                            }
                         }
                         Spacer().frame(height: 96)
                     }
@@ -95,6 +100,15 @@ struct WorkoutsListScreen: View {
             .padding(.bottom, 24)
         }
         .navigationBarBackButtonHidden(true)
+        .sheet(item: $selectedWorkout) { workout in
+            WorkoutDetailSheet(
+                workout: workout,
+                onStart: { appModel.startWorkout(id: workout.id) },
+                onEdit: { appModel.showNewWorkout(templateID: workout.id) },
+                onDelete: { appModel.deleteWorkout(id: workout.id) }
+            )
+            .presentationDetents([.medium, .large])
+        }
     }
 
     private func pillButton(_ title: String, fill: Color, action: @escaping () -> Void) -> some View {
@@ -104,6 +118,98 @@ struct WorkoutsListScreen: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
+                .background(fill)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct WorkoutDetailSheet: View {
+    let workout: WorkoutListItem
+    let onStart: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(workout.name)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text("\(workout.exerciseCount) exercise\(workout.exerciseCount == 1 ? "" : "s")")
+                        .font(.system(size: 14))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                    if let musicSummary = workout.musicSummary {
+                        Text(musicSummary)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RepSyncTheme.primaryGreen)
+                    }
+                }
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+            }
+
+            Divider().overlay(RepSyncTheme.divider)
+
+            if workout.exercises.isEmpty {
+                Text("No exercises saved yet.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(workout.exercises) { exercise in
+                        HStack {
+                            Text(exercise.name)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                            Spacer()
+                            Text("\(exercise.setCount) set\(exercise.setCount == 1 ? "" : "s")")
+                                .font(.system(size: 13))
+                                .foregroundStyle(RepSyncTheme.textSecondary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(RepSyncTheme.cardElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                pillButton("Start", fill: RepSyncTheme.primaryGreen) {
+                    dismiss()
+                    onStart()
+                }
+                pillButton("Edit", fill: RepSyncTheme.cardElevated) {
+                    dismiss()
+                    onEdit()
+                }
+                pillButton("Delete", fill: RepSyncTheme.destructive) {
+                    dismiss()
+                    onDelete()
+                }
+            }
+        }
+        .padding(24)
+        .background(RepSyncTheme.background)
+    }
+
+    private func pillButton(_ title: String, fill: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
                 .background(fill)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
