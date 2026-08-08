@@ -27,6 +27,19 @@ final class RepSyncTests: XCTestCase {
         XCTAssertEqual(exerciseNameMatchKey("plank"), exerciseNameMatchKey("Plank"))
     }
 
+    func testCanonicalLiftMatchingIncludesBenchButExcludesInclineBench() {
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Bench"), .benchPress)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Flat Barbell Bench Press"), .benchPress)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Squats"), .squat)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Deadlifts"), .deadlift)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Bent Over Rows"), .barbellRow)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Cable Lateral Raises"), .lateralRaise)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "RDLs"), .romanianDeadlift)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Barbell Shrugs"), .shrug)
+        XCTAssertNil(CanonicalLift.match(exerciseName: "Incline Bench Press"))
+        XCTAssertNil(CanonicalLift.match(exerciseName: "Dumbbell Bench Press"))
+    }
+
     @MainActor
     func testBodyweightTrendUsesLatestFourteenDays() throws {
         let store = RepSyncStore(context: PersistenceController(inMemory: true).container.viewContext)
@@ -144,6 +157,61 @@ final class RepSyncTests: XCTestCase {
         XCTAssertEqual(state.sex, .female)
         XCTAssertEqual(state.trainingAge, .intermediate)
         XCTAssertEqual(state.latestWeight, "184.5 lbs")
+    }
+
+    @MainActor
+    func testLeaderboardRanksMatchedBenchFromCompletedWorkout() throws {
+        let store = RepSyncStore(context: PersistenceController(inMemory: true).container.viewContext)
+        try store.setBiometricPreferences(
+            height: "70",
+            birthdate: testDate(year: 2000, month: 4, day: 17),
+            sex: .male,
+            trainingAge: .intermediate
+        )
+        try store.addBodyweightEntry(weight: 180, on: testDate(year: 2026, month: 4, day: 17))
+        try store.saveCompletedWorkout(from: ActiveWorkoutScreenState(
+            templateID: nil,
+            isQuickWorkout: true,
+            workoutName: "Push",
+            startedAt: testDate(year: 2026, month: 4, day: 17),
+            elapsedText: "0:00",
+            exercises: [
+                ActiveExerciseDraft(
+                    name: "Bench",
+                    trackingType: .weightReps,
+                    sets: [
+                        ActiveSetDraft(setNumber: 1, weight: "185", reps: "5", isComplete: true)
+                    ],
+                    isTrackingTypeLocked: true
+                ),
+                ActiveExerciseDraft(
+                    name: "Incline Bench Press",
+                    trackingType: .weightReps,
+                    sets: [
+                        ActiveSetDraft(setNumber: 1, weight: "225", reps: "5", isComplete: true)
+                    ],
+                    isTrackingTypeLocked: true
+                )
+            ]
+        ))
+
+        let state = try store.makeLeaderboardState(currentDate: testDate(year: 2026, month: 4, day: 17))
+        let bench = try XCTUnwrap(state.rows.first { $0.lift == .benchPress })
+
+        XCTAssertEqual(bench.rank, .intermediate)
+        XCTAssertEqual(bench.bestSetText, "185 x 5")
+        XCTAssertEqual(bench.sourceExerciseName, "Bench")
+    }
+
+    @MainActor
+    func testLeaderboardOnlyShowsTrackedLifts() throws {
+        let store = RepSyncStore(context: PersistenceController(inMemory: true).container.viewContext)
+
+        try store.setLeaderboardTrackedLifts([.benchPress, .romanianDeadlift])
+
+        let state = try store.makeLeaderboardState(currentDate: testDate(year: 2026, month: 4, day: 17))
+
+        XCTAssertEqual(state.rows.map(\.lift), [.benchPress, .romanianDeadlift])
     }
 
     @MainActor

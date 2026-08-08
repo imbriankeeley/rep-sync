@@ -295,6 +295,230 @@ struct ExerciseHistoryScreenState {
     var sessions: [ExerciseSessionModel] = []
 }
 
+enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
+    case benchPress
+    case squat
+    case deadlift
+    case overheadPress
+    case barbellRow
+    case hackSquat
+    case barbellCurl
+    case dumbbellCurl
+    case tricepExtension
+    case seatedCableRow
+    case latPulldown
+    case latPushdown
+    case cableKickback
+    case hipThrust
+    case legExtension
+    case legCurl
+    case calfRaise
+    case legRaise
+    case abductor
+    case adductor
+    case chestPress
+    case chestFly
+    case lateralRaise
+    case romanianDeadlift
+    case backExtension
+    case dip
+    case shrug
+
+    var id: String { rawValue }
+
+    static var defaultTrackedLifts: [CanonicalLift] { allCases }
+
+    var leaderboardSection: LeaderboardLiftSection {
+        switch self {
+        case .squat, .deadlift, .hackSquat, .cableKickback, .hipThrust, .legExtension, .legCurl, .calfRaise, .abductor, .adductor, .romanianDeadlift:
+            return .lowerBody
+        case .benchPress, .overheadPress, .barbellRow, .barbellCurl, .dumbbellCurl, .tricepExtension, .seatedCableRow, .latPulldown, .latPushdown, .legRaise, .chestPress, .chestFly, .lateralRaise, .backExtension, .dip, .shrug:
+            return .upperBody
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .benchPress: return "Bench Press"
+        case .squat: return "Squat"
+        case .deadlift: return "Deadlift"
+        case .overheadPress: return "Overhead Press"
+        case .barbellRow: return "Barbell Row"
+        case .hackSquat: return "Hack Squat"
+        case .barbellCurl: return "Barbell Curl"
+        case .dumbbellCurl: return "Dumbbell Curl"
+        case .tricepExtension: return "Tricep Extension"
+        case .seatedCableRow: return "Seated Cable Row"
+        case .latPulldown: return "Lat Pulldown"
+        case .latPushdown: return "Lat Pushdown"
+        case .cableKickback: return "Cable Kickback"
+        case .hipThrust: return "Hip Thrust"
+        case .legExtension: return "Leg Extension"
+        case .legCurl: return "Leg Curl"
+        case .calfRaise: return "Calf Raise"
+        case .legRaise: return "Leg Raise"
+        case .abductor: return "Abductor"
+        case .adductor: return "Adductor"
+        case .chestPress: return "Chest Press"
+        case .chestFly: return "Chest Fly"
+        case .lateralRaise: return "Lateral Raise"
+        case .romanianDeadlift: return "Romanian Deadlift"
+        case .backExtension: return "Back Extension"
+        case .dip: return "Dip"
+        case .shrug: return "Shrug"
+        }
+    }
+
+    private var aliases: Set<String> {
+        switch self {
+        case .benchPress:
+            return ["bench", "bench press", "barbell bench", "barbell bench press", "flat bench", "flat bench press", "flat barbell bench", "flat barbell bench press"]
+        case .squat:
+            return ["squat", "squats", "back squat", "back squats", "barbell squat", "barbell squats", "barbell back squat", "barbell back squats", "low bar squat", "high bar squat"]
+        case .deadlift:
+            return ["deadlift", "deadlifts", "conventional deadlift", "conventional deadlifts", "barbell deadlift", "barbell deadlifts"]
+        case .overheadPress:
+            return ["overhead press", "ohp", "press", "standing press", "standing overhead press", "barbell overhead press", "military press"]
+        case .barbellRow:
+            return ["barbell row", "barbell rows", "bent over row", "bent over rows", "bent-over row", "bent-over rows", "bb row", "bb rows", "pendlay row", "pendlay rows"]
+        case .hackSquat:
+            return ["hack squat", "hack squats", "machine hack squat", "machine hack squats"]
+        case .barbellCurl:
+            return ["barbell curl", "barbell curls", "bb curl", "bb curls", "straight bar curl", "straight bar curls", "ez bar curl", "ez bar curls"]
+        case .dumbbellCurl:
+            return ["dumbbell curl", "dumbbell curls", "db curl", "db curls", "alternating dumbbell curl", "alternating dumbbell curls", "hammer curl", "hammer curls"]
+        case .tricepExtension:
+            return ["tricep extension", "tricep extensions", "triceps extension", "triceps extensions", "cable tricep extension", "cable tricep extensions", "overhead tricep extension", "overhead tricep extensions", "skull crusher", "skull crushers"]
+        case .seatedCableRow:
+            return ["seated cable row", "seated cable rows", "cable row", "cable rows", "low cable row", "low cable rows"]
+        case .latPulldown:
+            return ["lat pulldown", "lat pulldowns", "lat pull down", "lat pull downs", "pulldown", "pulldowns", "wide grip lat pulldown", "wide grip lat pulldowns"]
+        case .latPushdown:
+            return ["lat pushdown", "lat pushdowns", "lat push down", "lat push downs", "straight arm pulldown", "straight arm pulldowns", "straight arm pushdown", "straight arm pushdowns"]
+        case .cableKickback:
+            return ["cable kickback", "cable kickbacks", "glute cable kickback", "glute cable kickbacks"]
+        case .hipThrust:
+            return ["hip thrust", "hip thrusts", "barbell hip thrust", "barbell hip thrusts", "glute bridge", "glute bridges"]
+        case .legExtension:
+            return ["leg extension", "leg extensions"]
+        case .legCurl:
+            return ["leg curl", "leg curls", "seated leg curl", "seated leg curls", "lying leg curl", "lying leg curls", "hamstring curl", "hamstring curls"]
+        case .calfRaise:
+            return ["calf raise", "calf raises", "calve raise", "calve raises", "standing calf raise", "standing calf raises", "seated calf raise", "seated calf raises"]
+        case .legRaise:
+            return ["leg raise", "leg raises", "hanging leg raise", "hanging leg raises", "captain chair leg raise", "captain chair leg raises"]
+        case .abductor:
+            return ["abductor", "abductors", "hip abductor", "hip abductors", "abductor machine"]
+        case .adductor:
+            return ["adductor", "adductors", "hip adductor", "hip adductors", "adductor machine"]
+        case .chestPress:
+            return ["chest press", "machine chest press", "plate loaded chest press", "seated chest press"]
+        case .chestFly:
+            return ["chest fly", "chest flyes", "chest flies", "pec fly", "pec flyes", "pec deck", "cable fly", "cable flyes"]
+        case .lateralRaise:
+            return ["lateral raise", "lateral raises", "cable lateral raise", "cable lateral raises", "db lateral raise", "db lateral raises", "dumbbell lateral raise", "dumbbell lateral raises", "side lateral raise", "side lateral raises"]
+        case .romanianDeadlift:
+            return ["romanian deadlift", "romanian deadlifts", "romandian deadlift", "romandian deadlifts", "rdl", "rdls", "rdl s", "barbell rdl", "barbell rdls"]
+        case .backExtension:
+            return ["back extension", "back extensions", "hyperextension", "hyperextensions", "weighted back extension", "weighted back extensions"]
+        case .dip:
+            return ["dip", "dips", "weighted dip", "weighted dips", "chest dip", "chest dips", "tricep dip", "tricep dips"]
+        case .shrug:
+            return ["shrug", "shrugs", "barbell shrug", "barbell shrugs", "bb shrug", "bb shrugs", "dumbbell shrug", "dumbbell shrugs"]
+        }
+    }
+
+    private var excludedPhrases: Set<String> {
+        switch self {
+        case .benchPress:
+            return ["incline bench", "decline bench", "dumbbell bench", "db bench", "close grip bench", "smith bench", "machine bench"]
+        case .squat:
+            return ["front squat", "hack squat", "goblet squat", "split squat", "bulgarian split squat", "smith squat", "leg press"]
+        case .deadlift:
+            return ["romanian deadlift", "rdl", "stiff leg deadlift", "sumo deadlift", "trap bar deadlift", "rack pull"]
+        case .overheadPress:
+            return ["dumbbell press", "db press", "bench press", "incline press", "push press", "machine shoulder press", "seated press"]
+        case .barbellRow:
+            return ["dumbbell row", "db row", "cable row", "machine row", "t bar row", "seal row"]
+        case .hackSquat, .barbellCurl, .dumbbellCurl, .tricepExtension, .seatedCableRow, .latPulldown, .latPushdown, .cableKickback, .hipThrust, .legExtension, .legCurl, .calfRaise, .legRaise, .abductor, .adductor, .chestPress, .chestFly, .lateralRaise, .romanianDeadlift, .backExtension, .dip, .shrug:
+            return []
+        }
+    }
+
+    static func match(exerciseName: String) -> CanonicalLift? {
+        let key = liftMatchKey(exerciseName)
+        guard !key.isEmpty else { return nil }
+
+        for lift in CanonicalLift.allCases {
+            if lift.excludedPhrases.contains(where: { key.contains($0) }) {
+                continue
+            }
+            if lift.aliases.contains(key) {
+                return lift
+            }
+        }
+
+        return nil
+    }
+}
+
+enum LeaderboardLiftSection: String, CaseIterable, Identifiable {
+    case upperBody = "Upper Body"
+    case lowerBody = "Lower Body"
+
+    var id: String { rawValue }
+}
+
+enum StrengthRankLevel: String, CaseIterable, Identifiable {
+    case unranked = "Unranked"
+    case untrained = "Untrained"
+    case novice = "Novice"
+    case intermediate = "Intermediate"
+    case advanced = "Advanced"
+    case elite = "Elite"
+
+    var id: String { rawValue }
+
+    var score: Double {
+        switch self {
+        case .unranked: return 0
+        case .untrained: return 1
+        case .novice: return 2
+        case .intermediate: return 3
+        case .advanced: return 4
+        case .elite: return 5
+        }
+    }
+}
+
+struct LeaderboardLiftRow: Identifiable {
+    let id: CanonicalLift
+    let lift: CanonicalLift
+    let rank: StrengthRankLevel
+    let bestSetText: String
+    let estimatedOneRepMaxText: String
+    let nextRankText: String?
+    let sourceExerciseName: String?
+}
+
+struct LeaderboardScreenState {
+    var classSummary = "Set biometrics to unlock your class"
+    var bodyweightClass = "-"
+    var overallRank = StrengthRankLevel.unranked
+    var overallScoreText = "-"
+    var rows: [LeaderboardLiftRow] = CanonicalLift.allCases.map {
+        LeaderboardLiftRow(
+            id: $0,
+            lift: $0,
+            rank: .unranked,
+            bestSetText: "No matched lift",
+            estimatedOneRepMaxText: "-",
+            nextRankText: nil,
+            sourceExerciseName: nil
+        )
+    }
+}
+
 struct BodyweightEntryModel: Identifiable {
     let id: UUID
     let date: Date
@@ -434,4 +658,18 @@ func exerciseNameMatchKey(_ value: String) -> String {
     normalizedExerciseName(value)
         .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         .lowercased()
+}
+
+func liftMatchKey(_ value: String) -> String {
+    let folded = value
+        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        .lowercased()
+
+    let scalars = folded.unicodeScalars.map { scalar in
+        CharacterSet.alphanumerics.contains(scalar) ? Character(scalar) : " "
+    }
+
+    return String(scalars)
+        .split(whereSeparator: { $0.isWhitespace })
+        .joined(separator: " ")
 }

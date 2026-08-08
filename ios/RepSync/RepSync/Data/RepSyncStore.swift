@@ -8,6 +8,15 @@ struct ExerciseHistorySample {
     let metricValue: Double
 }
 
+private struct CanonicalLiftPerformance {
+    let lift: CanonicalLift
+    let exerciseName: String
+    let weight: Double
+    let reps: Int
+    let estimatedOneRepMax: Double
+    let performedOn: Date
+}
+
 @MainActor
 final class RepSyncStore {
     private let context: NSManagedObjectContext
@@ -391,6 +400,26 @@ final class RepSyncStore {
         try setStringPreference(trainingAge.rawValue, for: profileTrainingAgeKey)
     }
 
+    func leaderboardTrackedLifts() throws -> Set<CanonicalLift> {
+        guard let rawValue = try stringPreference(for: leaderboardTrackedLiftsKey),
+              !rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return Set(CanonicalLift.defaultTrackedLifts)
+        }
+
+        let lifts = rawValue
+            .split(separator: ",")
+            .compactMap { CanonicalLift(rawValue: String($0)) }
+        return Set(lifts)
+    }
+
+    func setLeaderboardTrackedLifts(_ lifts: Set<CanonicalLift>) throws {
+        let rawValue = CanonicalLift.allCases
+            .filter { lifts.contains($0) }
+            .map(\.rawValue)
+            .joined(separator: ",")
+        try setStringPreference(rawValue, for: leaderboardTrackedLiftsKey)
+    }
+
     func fetchBodyweightEntries() throws -> [BodyweightEntry] {
         let request: NSFetchRequest<BodyweightEntry> = BodyweightEntry.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(key: "recordedOn", ascending: false)]
@@ -508,6 +537,43 @@ final class RepSyncStore {
         return BodyweightEntriesScreenState(entries: entries, filteredEntries: entries)
     }
 
+    func makeLeaderboardState(currentDate: Date = Date()) throws -> LeaderboardScreenState {
+        let entries = try fetchBodyweightEntryModels()
+        let bodyweight = entries.first?.value
+        let sex = try stringPreference(for: profileSexKey).flatMap(BiologicalSex.init(rawValue:)) ?? .male
+        let trainingAge = try stringPreference(for: profileTrainingAgeKey).flatMap(TrainingAge.init(rawValue:)) ?? .beginner
+        let birthdate = try profileBirthdate()
+        let age = birthdate.flatMap { Calendar.repsync.dateComponents([.year], from: $0, to: currentDate).year }
+        let height = formattedProfileHeight(try stringPreference(for: profileHeightKey))
+        let performances = try bestCanonicalLiftPerformances()
+        let trackedLifts = try leaderboardTrackedLifts()
+
+        let rows = CanonicalLift.allCases.filter { trackedLifts.contains($0) }.map { lift in
+            makeLeaderboardLiftRow(
+                lift: lift,
+                performance: performances[lift],
+                bodyweight: bodyweight,
+                sex: sex,
+                age: age
+            )
+        }
+        let rankedRows = rows.filter { $0.rank != .unranked }
+        let averageScore = rankedRows.isEmpty ? 0 : rankedRows.reduce(0) { $0 + $1.rank.score } / Double(rankedRows.count)
+        let overallRank = rankLevel(forScore: averageScore)
+        let bodyweightText = bodyweight.map { "\(formatWeight($0)) lbs" } ?? "-"
+        let ageText = age.map(String.init) ?? "-"
+        let classSummary = "\(sex.rawValue) • \(ageText) • \(bodyweightText) • \(trainingAge.rawValue)"
+        let heightSuffix = height.isEmpty ? "" : " • \(height)"
+
+        return LeaderboardScreenState(
+            classSummary: classSummary + heightSuffix,
+            bodyweightClass: bodyweight.map(bodyweightClassText) ?? "-",
+            overallRank: overallRank,
+            overallScoreText: rankedRows.isEmpty ? "Log a ranked lift" : "\(formatWeight(averageScore)) / 5",
+            rows: rows
+        )
+    }
+
     func makeHomeState(month: Date) throws -> HomeScreenState {
         let workoutDates = try fetchAllCompletedWorkoutDates()
         let monthStart = Calendar.repsync.date(from: Calendar.repsync.dateComponents([.year, .month], from: month)) ?? month
@@ -587,6 +653,255 @@ final class RepSyncStore {
                 )
             }
         )
+    }
+
+    private func bestCanonicalLiftPerformances() throws -> [CanonicalLift: CanonicalLiftPerformance] {
+        let request: NSFetchRequest<CompletedExercise> = CompletedExercise.fetchRequest()
+        request.predicate = NSPredicate(format: "trackingType == %@", ExerciseTrackingKind.weightReps.rawValue)
+        let exercises = try context.fetch(request)
+
+        var bestByLift: [CanonicalLift: CanonicalLiftPerformance] = [:]
+        for exercise in exercises {
+            guard let exerciseID = exercise.id,
+                  let exerciseName = exercise.name,
+                  let lift = CanonicalLift.match(exerciseName: exerciseName),
+                  let workoutID = exercise.workoutID,
+                  let workout = try fetchCompletedWorkout(id: workoutID),
+                  let performedOn = workout.performedOn else {
+                continue
+            }
+
+            let completedSets = try fetchCompletedSets(exerciseID: exerciseID)
+                .filter { $0.isCompleted && $0.weight > 0 && $0.reps > 0 }
+            for set in completedSets {
+                let reps = Int(set.reps)
+                let estimatedOneRepMax = estimatedOneRepMax(weight: set.weight, reps: reps)
+                let performance = CanonicalLiftPerformance(
+                    lift: lift,
+                    exerciseName: exerciseName,
+                    weight: set.weight,
+                    reps: reps,
+                    estimatedOneRepMax: estimatedOneRepMax,
+                    performedOn: performedOn
+                )
+                if let current = bestByLift[lift] {
+                    if performance.estimatedOneRepMax > current.estimatedOneRepMax ||
+                        (performance.estimatedOneRepMax == current.estimatedOneRepMax && performance.performedOn > current.performedOn) {
+                        bestByLift[lift] = performance
+                    }
+                } else {
+                    bestByLift[lift] = performance
+                }
+            }
+        }
+
+        return bestByLift
+    }
+
+    private func makeLeaderboardLiftRow(
+        lift: CanonicalLift,
+        performance: CanonicalLiftPerformance?,
+        bodyweight: Double?,
+        sex: BiologicalSex,
+        age: Int?
+    ) -> LeaderboardLiftRow {
+        guard let performance else {
+            return LeaderboardLiftRow(
+                id: lift,
+                lift: lift,
+                rank: .unranked,
+                bestSetText: "No matched lift",
+                estimatedOneRepMaxText: "-",
+                nextRankText: "Log \(lift.displayName)",
+                sourceExerciseName: nil
+            )
+        }
+
+        let bestSetText = "\(formatWeight(performance.weight)) x \(performance.reps)"
+        let oneRepMaxText = "\(formatWeight(performance.estimatedOneRepMax)) lb"
+
+        guard let bodyweight, bodyweight > 0 else {
+            return LeaderboardLiftRow(
+                id: lift,
+                lift: lift,
+                rank: .unranked,
+                bestSetText: bestSetText,
+                estimatedOneRepMaxText: oneRepMaxText,
+                nextRankText: "Log bodyweight to rank",
+                sourceExerciseName: performance.exerciseName
+            )
+        }
+
+        let rank = strengthRank(
+            lift: lift,
+            estimatedOneRepMax: performance.estimatedOneRepMax,
+            bodyweight: bodyweight,
+            sex: sex,
+            age: age
+        )
+        let nextRankText = nextStrengthRankTarget(
+            lift: lift,
+            rank: rank,
+            bodyweight: bodyweight,
+            sex: sex,
+            age: age
+        )
+
+        return LeaderboardLiftRow(
+            id: lift,
+            lift: lift,
+            rank: rank,
+            bestSetText: bestSetText,
+            estimatedOneRepMaxText: oneRepMaxText,
+            nextRankText: nextRankText,
+            sourceExerciseName: performance.exerciseName
+        )
+    }
+
+    private func estimatedOneRepMax(weight: Double, reps: Int) -> Double {
+        guard reps > 1 else { return weight }
+        return weight * (1 + Double(reps) / 30)
+    }
+
+    private func strengthRank(
+        lift: CanonicalLift,
+        estimatedOneRepMax: Double,
+        bodyweight: Double,
+        sex: BiologicalSex,
+        age: Int?
+    ) -> StrengthRankLevel {
+        let adjustedBodyweight = bodyweight * ageFactor(for: age)
+        guard adjustedBodyweight > 0 else { return .unranked }
+        let ratio = estimatedOneRepMax / adjustedBodyweight
+        let thresholds = strengthRatioThresholds(lift: lift, sex: sex)
+
+        if ratio >= thresholds.elite { return .elite }
+        if ratio >= thresholds.advanced { return .advanced }
+        if ratio >= thresholds.intermediate { return .intermediate }
+        if ratio >= thresholds.novice { return .novice }
+        return .untrained
+    }
+
+    private func nextStrengthRankTarget(
+        lift: CanonicalLift,
+        rank: StrengthRankLevel,
+        bodyweight: Double,
+        sex: BiologicalSex,
+        age: Int?
+    ) -> String? {
+        let thresholds = strengthRatioThresholds(lift: lift, sex: sex)
+        let next: (label: String, ratio: Double)?
+        switch rank {
+        case .unranked:
+            next = ("Novice", thresholds.novice)
+        case .untrained:
+            next = ("Novice", thresholds.novice)
+        case .novice:
+            next = ("Intermediate", thresholds.intermediate)
+        case .intermediate:
+            next = ("Advanced", thresholds.advanced)
+        case .advanced:
+            next = ("Elite", thresholds.elite)
+        case .elite:
+            next = nil
+        }
+
+        guard let next else { return "Top offline rank" }
+        let target = (bodyweight * ageFactor(for: age) * next.ratio / 5).rounded() * 5
+        return "\(formatWeight(target)) lb for \(next.label)"
+    }
+
+    private func strengthRatioThresholds(
+        lift: CanonicalLift,
+        sex: BiologicalSex
+    ) -> (novice: Double, intermediate: Double, advanced: Double, elite: Double) {
+        switch (lift, sex) {
+        case (.benchPress, .male): return (0.75, 1.00, 1.50, 2.00)
+        case (.benchPress, .female): return (0.40, 0.65, 1.00, 1.35)
+        case (.squat, .male): return (1.00, 1.50, 2.00, 2.50)
+        case (.squat, .female): return (0.75, 1.00, 1.50, 2.00)
+        case (.deadlift, .male): return (1.25, 1.75, 2.50, 3.00)
+        case (.deadlift, .female): return (1.00, 1.25, 2.00, 2.50)
+        case (.overheadPress, .male): return (0.45, 0.65, 0.90, 1.20)
+        case (.overheadPress, .female): return (0.30, 0.45, 0.65, 0.90)
+        case (.barbellRow, .male): return (0.70, 1.00, 1.30, 1.60)
+        case (.barbellRow, .female): return (0.45, 0.70, 1.00, 1.25)
+        case (.hackSquat, .male): return (1.20, 1.75, 2.40, 3.00)
+        case (.hackSquat, .female): return (0.90, 1.30, 1.85, 2.35)
+        case (.barbellCurl, .male): return (0.30, 0.45, 0.65, 0.85)
+        case (.barbellCurl, .female): return (0.18, 0.30, 0.45, 0.60)
+        case (.dumbbellCurl, .male): return (0.16, 0.24, 0.34, 0.45)
+        case (.dumbbellCurl, .female): return (0.10, 0.16, 0.24, 0.32)
+        case (.tricepExtension, .male): return (0.25, 0.40, 0.60, 0.80)
+        case (.tricepExtension, .female): return (0.16, 0.28, 0.42, 0.58)
+        case (.seatedCableRow, .male): return (0.65, 0.95, 1.30, 1.65)
+        case (.seatedCableRow, .female): return (0.45, 0.70, 1.00, 1.30)
+        case (.latPulldown, .male): return (0.55, 0.80, 1.10, 1.45)
+        case (.latPulldown, .female): return (0.35, 0.55, 0.85, 1.10)
+        case (.latPushdown, .male): return (0.25, 0.40, 0.60, 0.80)
+        case (.latPushdown, .female): return (0.16, 0.28, 0.42, 0.58)
+        case (.cableKickback, .male): return (0.12, 0.20, 0.30, 0.42)
+        case (.cableKickback, .female): return (0.10, 0.18, 0.28, 0.38)
+        case (.hipThrust, .male): return (1.00, 1.50, 2.20, 2.80)
+        case (.hipThrust, .female): return (0.85, 1.25, 1.90, 2.50)
+        case (.legExtension, .male): return (0.55, 0.85, 1.20, 1.60)
+        case (.legExtension, .female): return (0.40, 0.65, 0.95, 1.25)
+        case (.legCurl, .male): return (0.35, 0.55, 0.80, 1.05)
+        case (.legCurl, .female): return (0.28, 0.45, 0.68, 0.90)
+        case (.calfRaise, .male): return (0.80, 1.20, 1.70, 2.25)
+        case (.calfRaise, .female): return (0.60, 0.95, 1.35, 1.80)
+        case (.legRaise, .male): return (0.05, 0.12, 0.25, 0.40)
+        case (.legRaise, .female): return (0.05, 0.10, 0.20, 0.34)
+        case (.abductor, .male): return (0.35, 0.55, 0.85, 1.15)
+        case (.abductor, .female): return (0.30, 0.50, 0.78, 1.05)
+        case (.adductor, .male): return (0.35, 0.55, 0.85, 1.15)
+        case (.adductor, .female): return (0.30, 0.50, 0.78, 1.05)
+        case (.chestPress, .male): return (0.65, 0.95, 1.35, 1.75)
+        case (.chestPress, .female): return (0.38, 0.60, 0.90, 1.20)
+        case (.chestFly, .male): return (0.22, 0.35, 0.52, 0.70)
+        case (.chestFly, .female): return (0.14, 0.24, 0.36, 0.50)
+        case (.lateralRaise, .male): return (0.10, 0.16, 0.24, 0.34)
+        case (.lateralRaise, .female): return (0.06, 0.11, 0.18, 0.26)
+        case (.romanianDeadlift, .male): return (0.90, 1.35, 1.90, 2.40)
+        case (.romanianDeadlift, .female): return (0.70, 1.05, 1.55, 2.00)
+        case (.backExtension, .male): return (0.30, 0.55, 0.90, 1.25)
+        case (.backExtension, .female): return (0.20, 0.40, 0.70, 1.00)
+        case (.dip, .male): return (0.10, 0.35, 0.70, 1.05)
+        case (.dip, .female): return (0.05, 0.18, 0.45, 0.75)
+        case (.shrug, .male): return (0.80, 1.20, 1.70, 2.25)
+        case (.shrug, .female): return (0.55, 0.85, 1.25, 1.65)
+        }
+    }
+
+    private func ageFactor(for age: Int?) -> Double {
+        guard let age else { return 1.0 }
+        switch age {
+        case ..<20: return 0.90
+        case 20..<40: return 1.00
+        case 40..<50: return 0.92
+        case 50..<60: return 0.84
+        case 60..<70: return 0.76
+        default: return 0.68
+        }
+    }
+
+    private func rankLevel(forScore score: Double) -> StrengthRankLevel {
+        switch score {
+        case 4.5...: return .elite
+        case 3.5..<4.5: return .advanced
+        case 2.5..<3.5: return .intermediate
+        case 1.5..<2.5: return .novice
+        case 0.5..<1.5: return .untrained
+        default: return .unranked
+        }
+    }
+
+    private func bodyweightClassText(_ bodyweight: Double) -> String {
+        let classes: [Double] = [114, 123, 132, 148, 165, 181, 198, 220, 242, 275, 308]
+        if let upperBound = classes.first(where: { bodyweight <= $0 }) {
+            return "\(Int(upperBound)) lb class"
+        }
+        return "SHW"
     }
 
     private func fetchBodyweightEntryModels() throws -> [BodyweightEntryModel] {
@@ -934,6 +1249,7 @@ final class RepSyncStore {
     private let profileBirthdateKey = "profile_birthdate"
     private let profileSexKey = "profile_sex"
     private let profileTrainingAgeKey = "profile_training_age"
+    private let leaderboardTrackedLiftsKey = "leaderboard_tracked_lifts"
 
     private func workoutMusicPlaylistIDKey(_ templateID: UUID) -> String {
         "workout_music_playlist_id_\(templateID.uuidString)"

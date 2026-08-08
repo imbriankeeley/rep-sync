@@ -90,45 +90,196 @@ struct HomeScreen: View {
 
 struct LeaderboardScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var showsTrackedLifts = false
+    @State private var showsUpperBody = true
+    @State private var showsLowerBody = true
 
     var body: some View {
-        VStack(spacing: 12) {
-            RepSyncCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Leaderboard")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundStyle(RepSyncTheme.textPrimary)
+        ScrollView {
+            VStack(spacing: 12) {
+                RepSyncCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Leaderboard")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
 
-                    Text("Rankings are coming soon.")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(RepSyncTheme.primaryGreen)
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Overall")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(RepSyncTheme.textSecondary)
+                                Text(appModel.leaderboardState.overallRank.rawValue)
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(appModel.leaderboardState.overallRank == .unranked ? RepSyncTheme.textSecondary : RepSyncTheme.primaryGreen)
+                            }
 
-                    Text("Future lift and overall rankings will use your biometric class, training age, and completed workout history.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+
+                            Text(appModel.leaderboardState.overallScoreText)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .padding(.horizontal, 12)
+                                .frame(height: 34)
+                                .background(RepSyncTheme.cardElevated)
+                                .clipShape(Capsule())
+                        }
+
+                        Text(appModel.leaderboardState.classSummary)
+                            .font(.system(size: 14))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                RepSyncCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showsTrackedLifts.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Tracked Lifts")
+                                        .font(.system(size: 18, weight: .bold))
+                                        .foregroundStyle(RepSyncTheme.textPrimary)
+                                    Text("\(appModel.trackedLeaderboardLifts.count) of \(CanonicalLift.allCases.count) shown")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(RepSyncTheme.textSecondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: showsTrackedLifts ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(RepSyncTheme.textSecondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showsTrackedLifts {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                                ForEach(CanonicalLift.allCases) { lift in
+                                    trackedLiftToggle(lift)
+                                }
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                }
+
+                VStack(spacing: 10) {
+                    if appModel.leaderboardState.rows.isEmpty {
+                        RepSyncCard {
+                            Text("Select at least one tracked lift to show rankings.")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(RepSyncTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        leaderboardSection(
+                            title: LeaderboardLiftSection.upperBody.rawValue,
+                            rows: rows(in: .upperBody),
+                            isExpanded: $showsUpperBody
+                        )
+                        leaderboardSection(
+                            title: LeaderboardLiftSection.lowerBody.rawValue,
+                            rows: rows(in: .lowerBody),
+                            isExpanded: $showsLowerBody
+                        )
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 24)
+        }
+        .background(RepSyncTheme.background.ignoresSafeArea())
+    }
 
-            RepSyncCard {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Your Future Class")
+    private func rows(in section: LeaderboardLiftSection) -> [LeaderboardLiftRow] {
+        appModel.leaderboardState.rows.filter { $0.lift.leaderboardSection == section }
+    }
+
+    private func leaderboardSection(
+        title: String,
+        rows: [LeaderboardLiftRow],
+        isExpanded: Binding<Bool>
+    ) -> some View {
+        VStack(spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Text(title)
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(RepSyncTheme.textPrimary)
 
-                    leaderboardRow("Bodyweight", appModel.profileState.latestWeight)
-                    leaderboardRow("Sex", appModel.profileState.sex.rawValue)
-                    leaderboardRow("Training Age", appModel.profileState.trainingAge.rawValue)
-                    leaderboardRow("Height", appModel.profileState.height.isEmpty ? "-" : appModel.profileState.height)
-                    leaderboardRow("Age", appModel.profileState.age.isEmpty ? "-" : appModel.profileState.age)
+                    Text("\(rows.count)")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .padding(.horizontal, 9)
+                        .frame(height: 26)
+                        .background(RepSyncTheme.cardElevated)
+                        .clipShape(Capsule())
+
+                    Spacer()
+
+                    Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .background(RepSyncTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                if rows.isEmpty {
+                    RepSyncCard {
+                        Text("No tracked lifts in this section.")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    ForEach(rows) { row in
+                        leaderboardLiftCard(row)
+                    }
                 }
             }
-
-            Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .background(RepSyncTheme.background.ignoresSafeArea())
+    }
+
+    private func trackedLiftToggle(_ lift: CanonicalLift) -> some View {
+        let isTracked = appModel.trackedLeaderboardLifts.contains(lift)
+
+        return Button {
+            appModel.toggleLeaderboardLift(lift)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isTracked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isTracked ? RepSyncTheme.primaryGreen : RepSyncTheme.textSecondary)
+
+                Text(lift.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 38)
+            .background(isTracked ? RepSyncTheme.primaryGreen.opacity(0.14) : RepSyncTheme.cardElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func leaderboardRow(_ label: String, _ value: String) -> some View {
@@ -143,6 +294,64 @@ struct LeaderboardScreen: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 38)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func leaderboardLiftCard(_ row: LeaderboardLiftRow) -> some View {
+        RepSyncCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(row.lift.displayName)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+
+                    Spacer()
+
+                    Text(row.rank.rawValue)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(row.rank == .unranked ? RepSyncTheme.textSecondary : RepSyncTheme.primaryGreen)
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background((row.rank == .unranked ? RepSyncTheme.cardElevated : RepSyncTheme.primaryGreen.opacity(0.15)))
+                        .clipShape(Capsule())
+                }
+
+                HStack(spacing: 10) {
+                    liftMetric(title: "Best", value: row.bestSetText)
+                    liftMetric(title: "Est. 1RM", value: row.estimatedOneRepMaxText)
+                }
+
+                if let sourceExerciseName = row.sourceExerciseName {
+                    Text("Matched from \(sourceExerciseName)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                }
+
+                if let nextRankText = row.nextRankText {
+                    Text(nextRankText)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func liftMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .frame(height: 54)
         .background(RepSyncTheme.cardElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }

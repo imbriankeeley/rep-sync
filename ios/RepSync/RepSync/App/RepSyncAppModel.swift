@@ -24,6 +24,8 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     @Published var dayViewState = DayViewScreenState(selectedDate: Date())
     @Published var historyState = ExerciseHistoryScreenState()
     @Published var profileState = ProfileScreenState()
+    @Published var leaderboardState = LeaderboardScreenState()
+    @Published var trackedLeaderboardLifts: Set<CanonicalLift> = Set(CanonicalLift.defaultTrackedLifts)
     @Published var bodyweightEntriesState = BodyweightEntriesScreenState()
     @Published var workoutEditorState = WorkoutEditorScreenState()
 
@@ -115,6 +117,7 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         super.init()
         configureMusicObservers()
         loadBodyweightChartRangePreference()
+        loadLeaderboardTrackedLiftsPreference()
         loadMusicPreferences()
         loadRestTimerPreference()
         loadPersistedRestTimer()
@@ -208,6 +211,8 @@ final class RepSyncAppModel: NSObject, ObservableObject {
                 )
             }
             profileState = try store.makeProfileState(bodyweightChartRange: selectedBodyweightChartRange)
+            trackedLeaderboardLifts = try store.leaderboardTrackedLifts()
+            leaderboardState = try store.makeLeaderboardState()
             let latestBodyweightState = try store.makeBodyweightEntriesState()
             bodyweightEntriesState.entries = latestBodyweightState.entries
             if let startDate = bodyweightEntriesState.startDate, let endDate = bodyweightEntriesState.endDate {
@@ -1032,6 +1037,22 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         }
     }
 
+    func toggleLeaderboardLift(_ lift: CanonicalLift) {
+        if trackedLeaderboardLifts.contains(lift) {
+            trackedLeaderboardLifts.remove(lift)
+        } else {
+            trackedLeaderboardLifts.insert(lift)
+        }
+
+        do {
+            try store.setLeaderboardTrackedLifts(trackedLeaderboardLifts)
+            leaderboardState = try store.makeLeaderboardState()
+        } catch {
+            print("Failed to update leaderboard tracked lifts: \(error)")
+            loadLeaderboardTrackedLiftsPreference()
+        }
+    }
+
     func dismissMusicPrompt() {
         hasDismissedMusicPrompt = true
         do {
@@ -1699,6 +1720,14 @@ final class RepSyncAppModel: NSObject, ObservableObject {
             }
         } catch {
             print("Failed to load bodyweight chart range preference: \(error)")
+        }
+    }
+
+    private func loadLeaderboardTrackedLiftsPreference() {
+        do {
+            trackedLeaderboardLifts = try store.leaderboardTrackedLifts()
+        } catch {
+            print("Failed to load leaderboard tracked lifts: \(error)")
         }
     }
 
