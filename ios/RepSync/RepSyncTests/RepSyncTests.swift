@@ -36,6 +36,9 @@ final class RepSyncTests: XCTestCase {
         XCTAssertEqual(CanonicalLift.match(exerciseName: "Cable Lateral Raises"), .lateralRaise)
         XCTAssertEqual(CanonicalLift.match(exerciseName: "RDLs"), .romanianDeadlift)
         XCTAssertEqual(CanonicalLift.match(exerciseName: "Barbell Shrugs"), .shrug)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Bicep Curls"), .barbellCurl)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Leg Raises"), .legRaise)
+        XCTAssertEqual(CanonicalLift.match(exerciseName: "Dips"), .dip)
         XCTAssertNil(CanonicalLift.match(exerciseName: "Incline Bench Press"))
         XCTAssertNil(CanonicalLift.match(exerciseName: "Dumbbell Bench Press"))
     }

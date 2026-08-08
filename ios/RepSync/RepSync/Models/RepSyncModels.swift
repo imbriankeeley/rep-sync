@@ -384,7 +384,7 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
         case .hackSquat:
             return ["hack squat", "hack squats", "machine hack squat", "machine hack squats"]
         case .barbellCurl:
-            return ["barbell curl", "barbell curls", "bb curl", "bb curls", "straight bar curl", "straight bar curls", "ez bar curl", "ez bar curls"]
+            return ["barbell curl", "barbell curls", "bb curl", "bb curls", "straight bar curl", "straight bar curls", "ez bar curl", "ez bar curls", "bicep curl", "bicep curls", "biceps curl", "biceps curls"]
         case .dumbbellCurl:
             return ["dumbbell curl", "dumbbell curls", "db curl", "db curls", "alternating dumbbell curl", "alternating dumbbell curls", "hammer curl", "hammer curls"]
         case .tricepExtension:
