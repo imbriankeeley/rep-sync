@@ -116,10 +116,6 @@ RepSync/
 ├── ios/RepSync/             # iOS app project
 ├── docs/
 │   ├── RELEASE_NOTES.md
-│   ├── plan-web.md
-│   └── prompts-web.md
-├── 2.24plan.md              # Android planning reference
-├── 2.24prompts.md           # Android implementation prompts
 ├── plan.md                  # Current iOS planning reference
 ├── assets/
 ├── build.gradle.kts
