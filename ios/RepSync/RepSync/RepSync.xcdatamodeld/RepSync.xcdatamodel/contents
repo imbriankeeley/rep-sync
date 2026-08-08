@@ -44,6 +44,7 @@
     <entity name="BodyweightEntry" representedClassName="BodyweightEntry" syncable="YES" codeGenerationType="class">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="note" optional="YES" attributeType="String"/>
+        <attribute name="photoPath" optional="YES" attributeType="String"/>
         <attribute name="recordedOn" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="weight" optional="NO" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
     </entity>
@@ -70,7 +71,7 @@
         <element name="CompletedWorkout" positionX="120" positionY="-180" width="128" height="119"/>
         <element name="CompletedExercise" positionX="320" positionY="-180" width="128" height="104"/>
         <element name="CompletedSet" positionX="520" positionY="-180" width="128" height="164"/>
-        <element name="BodyweightEntry" positionX="-180" positionY="40" width="128" height="104"/>
+        <element name="BodyweightEntry" positionX="-180" positionY="40" width="128" height="119"/>
         <element name="UserProfile" positionX="40" positionY="40" width="128" height="134"/>
         <element name="AppPreference" positionX="260" positionY="40" width="128" height="119"/>
     </elements>

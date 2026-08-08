@@ -1,8 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct WorkoutsListScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
     @State private var selectedWorkout: WorkoutListItem?
+    @State private var workoutToRemove: WorkoutListItem?
+    @State private var draggingWorkoutID: UUID?
+    @State private var highlightedWorkoutDropIndex: Int?
 
     private var filteredWorkouts: [WorkoutListItem] {
         let query = appModel.workoutsState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,35 +53,48 @@ struct WorkoutsListScreen: View {
                                 .padding(.top, 48)
                         }
 
-                        ForEach(filteredWorkouts) { workout in
-                            RepSyncCard {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text(workout.name)
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundStyle(RepSyncTheme.textPrimary)
-
-                                    Text("\(workout.exerciseCount) exercise\(workout.exerciseCount == 1 ? "" : "s")")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
-
-                                    if let musicSummary = workout.musicSummary {
-                                        Text(musicSummary)
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundStyle(RepSyncTheme.primaryGreen)
-                                            .lineLimit(2)
+                        ForEach(Array(filteredWorkouts.enumerated()), id: \.element.id) { index, workout in
+                            if appModel.workoutsState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                RepSyncReorderDropZone(
+                                    index: index,
+                                    isEnabled: canDropWorkout(at: index),
+                                    draggingID: $draggingWorkoutID,
+                                    highlightedIndex: $highlightedWorkoutDropIndex,
+                                    onDrop: { sourceID, targetIndex in
+                                        appModel.moveWorkout(id: sourceID, to: targetIndex)
+                                    },
+                                    onEnd: {
+                                        appModel.commitWorkoutOrder()
                                     }
-
-                                    HStack(spacing: 8) {
-                                        pillButton("Start", fill: RepSyncTheme.primaryGreen) { appModel.startWorkout(id: workout.id) }
-                                        pillButton("Edit", fill: RepSyncTheme.cardElevated) { appModel.showNewWorkout(templateID: workout.id) }
-                                        pillButton("Delete", fill: RepSyncTheme.destructive) { appModel.deleteWorkout(id: workout.id) }
-                                    }
-                                }
+                                )
                             }
+
+                            workoutCard(workout)
                             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .onTapGesture {
                                 selectedWorkout = workout
                             }
+                            .onDrag {
+                                draggingWorkoutID = workout.id
+                                return NSItemProvider(object: workout.id.uuidString as NSString)
+                            } preview: {
+                                workoutCard(workout)
+                            }
+                        }
+
+                        if !filteredWorkouts.isEmpty && appModel.workoutsState.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            RepSyncReorderDropZone(
+                                index: filteredWorkouts.count,
+                                isEnabled: canDropWorkout(at: filteredWorkouts.count),
+                                draggingID: $draggingWorkoutID,
+                                highlightedIndex: $highlightedWorkoutDropIndex,
+                                onDrop: { sourceID, targetIndex in
+                                    appModel.moveWorkout(id: sourceID, to: targetIndex)
+                                },
+                                onEnd: {
+                                    appModel.commitWorkoutOrder()
+                                }
+                            )
                         }
                         Spacer().frame(height: 96)
                     }
@@ -105,9 +122,26 @@ struct WorkoutsListScreen: View {
                 workout: workout,
                 onStart: { appModel.startWorkout(id: workout.id) },
                 onEdit: { appModel.showNewWorkout(templateID: workout.id) },
-                onDelete: { appModel.deleteWorkout(id: workout.id) }
+                onDelete: { workoutToRemove = workout }
             )
             .presentationDetents([.medium, .large])
+        }
+        .alert("Remove Workout?", isPresented: Binding(
+            get: { workoutToRemove != nil },
+            set: { if !$0 { workoutToRemove = nil } }
+        )) {
+            Button("Cancel", role: .cancel) {
+                workoutToRemove = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let workoutToRemove {
+                    appModel.deleteWorkout(id: workoutToRemove.id)
+                }
+                selectedWorkout = nil
+                workoutToRemove = nil
+            }
+        } message: {
+            Text("This workout template will be removed permanently and cannot be undone.")
         }
     }
 
@@ -122,6 +156,41 @@ struct WorkoutsListScreen: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    private func workoutCard(_ workout: WorkoutListItem) -> some View {
+        RepSyncCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(workout.name)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+
+                Text("\(workout.exerciseCount) exercise\(workout.exerciseCount == 1 ? "" : "s")")
+                    .font(.system(size: 14))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+
+                if let musicSummary = workout.musicSummary {
+                    Text(musicSummary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.primaryGreen)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 8) {
+                    pillButton("Start", fill: RepSyncTheme.primaryGreen) { appModel.startWorkout(id: workout.id) }
+                    pillButton("Edit", fill: RepSyncTheme.cardElevated) { appModel.showNewWorkout(templateID: workout.id) }
+                    pillButton("Remove", fill: RepSyncTheme.destructive) { workoutToRemove = workout }
+                }
+            }
+        }
+    }
+
+    private func canDropWorkout(at index: Int) -> Bool {
+        guard let draggingWorkoutID,
+              let sourceIndex = filteredWorkouts.firstIndex(where: { $0.id == draggingWorkoutID }) else {
+            return true
+        }
+        return index != sourceIndex && index != sourceIndex + 1
     }
 }
 
@@ -193,7 +262,7 @@ private struct WorkoutDetailSheet: View {
                     dismiss()
                     onEdit()
                 }
-                pillButton("Delete", fill: RepSyncTheme.destructive) {
+                pillButton("Remove", fill: RepSyncTheme.destructive) {
                     dismiss()
                     onDelete()
                 }
@@ -219,6 +288,8 @@ private struct WorkoutDetailSheet: View {
 
 struct WorkoutEditorScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var draggingExerciseID: UUID?
+    @State private var highlightedExerciseDropIndex: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -257,8 +328,38 @@ struct WorkoutEditorScreen: View {
 
                     WorkoutAudioEditorCard()
 
-                    ForEach($appModel.workoutEditorState.exercises) { $exercise in
-                        WorkoutExerciseEditorCard(exercise: $exercise)
+                    ForEach(Array(appModel.workoutEditorState.exercises.enumerated()), id: \.element.id) { index, exercise in
+                        RepSyncReorderDropZone(
+                            index: index,
+                            isEnabled: canDropEditorExercise(at: index),
+                            draggingID: $draggingExerciseID,
+                            highlightedIndex: $highlightedExerciseDropIndex,
+                            onDrop: { sourceID, targetIndex in
+                                appModel.moveEditorExercise(id: sourceID, to: targetIndex)
+                            }
+                        )
+
+                        if let exerciseBinding = binding(for: exercise.id) {
+                            WorkoutExerciseEditorCard(exercise: exerciseBinding)
+                                .onDrag {
+                                    draggingExerciseID = exercise.id
+                                    return NSItemProvider(object: exercise.id.uuidString as NSString)
+                                } preview: {
+                                    WorkoutExerciseDragPreview(exercise: exercise)
+                                }
+                        }
+                    }
+
+                    if !appModel.workoutEditorState.exercises.isEmpty {
+                        RepSyncReorderDropZone(
+                            index: appModel.workoutEditorState.exercises.count,
+                            isEnabled: canDropEditorExercise(at: appModel.workoutEditorState.exercises.count),
+                            draggingID: $draggingExerciseID,
+                            highlightedIndex: $highlightedExerciseDropIndex,
+                            onDrop: { sourceID, targetIndex in
+                                appModel.moveEditorExercise(id: sourceID, to: targetIndex)
+                            }
+                        )
                     }
 
                     Button {
@@ -281,10 +382,35 @@ struct WorkoutEditorScreen: View {
         .background(RepSyncTheme.background.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
     }
+
+    private func canDropEditorExercise(at index: Int) -> Bool {
+        guard let draggingExerciseID,
+              let sourceIndex = appModel.workoutEditorState.exercises.firstIndex(where: { $0.id == draggingExerciseID }) else {
+            return true
+        }
+        return index != sourceIndex && index != sourceIndex + 1
+    }
+
+    private func binding(for exerciseID: UUID) -> Binding<WorkoutExerciseDraft>? {
+        guard let fallbackExercise = appModel.workoutEditorState.exercises.first(where: { $0.id == exerciseID }) else {
+            return nil
+        }
+
+        return Binding(
+            get: {
+                appModel.workoutEditorState.exercises.first(where: { $0.id == exerciseID }) ?? fallbackExercise
+            },
+            set: { updatedExercise in
+                guard let index = appModel.workoutEditorState.exercises.firstIndex(where: { $0.id == exerciseID }) else { return }
+                appModel.workoutEditorState.exercises[index] = updatedExercise
+            }
+        )
+    }
 }
 
 private struct WorkoutAudioEditorCard: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var showsAppleMusicPicker = false
 
     private var selectedPlaylistName: String? {
         appModel.workoutEditorState.musicPlaylistName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
@@ -292,11 +418,14 @@ private struct WorkoutAudioEditorCard: View {
             : nil
     }
 
-    private var appleQuickPicks: [MusicQuickPickItem] {
-        let library = Array(appModel.appleMusicLibraryPlaylists.prefix(3))
-        let libraryIDs = Set(library.map(\.id))
-        let recents = appModel.appleMusicRecentItems.filter { !libraryIDs.contains($0.id) }
-        return library + Array(recents.prefix(max(0, 3 - library.count)))
+    private var libraryPlaylists: [MusicQuickPickItem] {
+        Array(appModel.appleMusicLibraryPlaylists.prefix(3))
+    }
+
+    private var recentItems: [MusicQuickPickItem] {
+        Array(appModel.appleMusicRecentItems.filter { item in
+            !libraryPlaylists.contains(where: { $0.id == item.id })
+        }.prefix(3))
     }
 
     var body: some View {
@@ -310,6 +439,33 @@ private struct WorkoutAudioEditorCard: View {
                     Text("Pick a playlist to keep this workout consistent every time you start it.")
                         .font(.system(size: 14))
                         .foregroundStyle(RepSyncTheme.textSecondary)
+
+                    Button(appModel.isRefreshingAppleMusic ? "Refreshing Apple Music..." : "Refresh Apple Music Library") {
+                        appModel.refreshAppleMusicConnection()
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(RepSyncTheme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Browse All Apple Music Playlists") {
+                        showsAppleMusicPicker = true
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(RepSyncTheme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    if let refreshSummary = appModel.appleMusicRefreshSummary,
+                       !refreshSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(refreshSummary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                    }
 
                     if let selectedPlaylistName {
                         HStack(spacing: 8) {
@@ -333,38 +489,33 @@ private struct WorkoutAudioEditorCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
 
-                    if appleQuickPicks.isEmpty {
-                        Text("Connect Apple Music on the Home or Profile screen to load your recent playlists here.")
+                    if libraryPlaylists.isEmpty && recentItems.isEmpty {
+                        Text(appModel.appleMusicDisplayMessage)
                             .font(.system(size: 13))
                             .foregroundStyle(RepSyncTheme.textSecondary)
                     } else {
                         VStack(spacing: 8) {
-                            ForEach(appleQuickPicks) { item in
-                                Button {
-                                    appModel.applyAppleMusicPlaylistToWorkoutEditor(item)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(item.title)
-                                                .font(.system(size: 14, weight: .semibold))
-                                                .foregroundStyle(RepSyncTheme.textPrimary)
-                                                .lineLimit(1)
-                                            Text(item.subtitle)
-                                                .font(.system(size: 12))
-                                                .foregroundStyle(RepSyncTheme.textSecondary)
-                                                .lineLimit(1)
-                                        }
-                                        Spacer()
-                                        Text("Use")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(RepSyncTheme.primaryGreen)
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                    .background(RepSyncTheme.cardElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            if !libraryPlaylists.isEmpty {
+                                Text("Library Playlists")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RepSyncTheme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                ForEach(libraryPlaylists) { item in
+                                    appleMusicPlaylistSelectionRow(item)
                                 }
-                                .buttonStyle(.plain)
+                            }
+
+                            if !recentItems.isEmpty {
+                                Text("Recently Played")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RepSyncTheme.textSecondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, libraryPlaylists.isEmpty ? 0 : 4)
+
+                                ForEach(recentItems) { item in
+                                    appleMusicPlaylistSelectionRow(item)
+                                }
                             }
                         }
                     }
@@ -392,37 +543,55 @@ private struct WorkoutAudioEditorCard: View {
                     Text("Paste a Spotify playlist link")
                         .font(.system(size: 12))
                         .foregroundStyle(RepSyncTheme.textSecondary)
-                } else if appModel.selectedMusicProvider == .youtubeMusic {
-                    Text("Paste a YouTube Music playlist link for this workout. RepSync will open it from the home widget.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
-
-                    TextField(
-                        "https://music.youtube.com/playlist?list=...",
-                        text: Binding(
-                            get: { appModel.workoutEditorState.musicPlaylistURL ?? "" },
-                            set: { appModel.setWorkoutEditorYouTubeMusicURL($0) }
-                        )
-                    )
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .autocorrectionDisabled()
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .background(RepSyncTheme.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    Text("Paste a YouTube Music playlist link")
-                        .font(.system(size: 12))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
                 } else {
-                    Text("Choose Apple Music, Spotify, or YouTube Music on the Home or Profile screen to attach a playlist to this workout.")
+                    Text("Choose Apple Music or Spotify on the Home or Profile screen to attach a playlist to this workout.")
                         .font(.system(size: 14))
                         .foregroundStyle(RepSyncTheme.textSecondary)
                 }
             }
         }
+        .sheet(isPresented: $showsAppleMusicPicker) {
+            AppleMusicPlaylistPickerSheet(
+                items: appModel.allAppleMusicBrowseItems,
+                onRefresh: { appModel.refreshAppleMusicConnection() },
+                onSelect: { item in
+                    appModel.applyAppleMusicPlaylistToWorkoutEditor(item)
+                    showsAppleMusicPicker = false
+                }
+            )
+            .environmentObject(appModel)
+            .presentationDetents([.large])
+        }
+    }
+
+    private func appleMusicPlaylistSelectionRow(_ item: MusicQuickPickItem) -> some View {
+        Button {
+            appModel.applyAppleMusicPlaylistToWorkoutEditor(item)
+        } label: {
+            HStack(spacing: 12) {
+                workoutPlaylistArtwork(url: item.artworkURL)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                        .lineLimit(1)
+                    Text(item.subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text("Use")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.primaryGreen)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(RepSyncTheme.cardElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -449,6 +618,7 @@ private struct WorkoutExerciseEditorCard: View {
                         .foregroundStyle(RepSyncTheme.textPrimary)
                         .onChange(of: exercise.name) { _, _ in
                             appModel.clearEditorSuggestionFlag(for: exercise.id)
+                            appModel.resolveEditorExerciseName(for: exercise.id)
                         }
 
                     Button {
@@ -504,4 +674,70 @@ private struct WorkoutExerciseEditorCard: View {
             }
         }
     }
+}
+
+private struct WorkoutExerciseDragPreview: View {
+    let exercise: WorkoutExerciseDraft
+
+    var body: some View {
+        RepSyncCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Exercise" : exercise.name)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                RepSyncExerciseTypeBadge(trackingType: exercise.trackingType)
+
+                HStack {
+                    Text("Sets")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                    Spacer()
+                    Text("\(exercise.setCount)")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                }
+            }
+        }
+    }
+}
+
+private struct WorkoutPlaylistArtwork: View {
+    let url: URL?
+
+    var body: some View {
+        Group {
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallbackArtwork
+                    }
+                }
+            } else {
+                fallbackArtwork
+            }
+        }
+        .frame(width: 42, height: 42)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var fallbackArtwork: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(RepSyncTheme.card)
+            .overlay(
+                Image(systemName: "music.note.list")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+            )
+    }
+}
+
+private func workoutPlaylistArtwork(url: URL?) -> some View {
+    WorkoutPlaylistArtwork(url: url)
 }

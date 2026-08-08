@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ActiveWorkoutScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
@@ -7,6 +8,8 @@ struct ActiveWorkoutScreen: View {
     @State private var showsFinishWarning = false
     @State private var finishWarningMessage = ""
     @State private var finishWarningAllowsOverride = false
+    @State private var draggingExerciseID: UUID?
+    @State private var highlightedExerciseDropIndex: Int?
 
     var body: some View {
         if let state = appModel.activeWorkoutState {
@@ -16,10 +19,44 @@ struct ActiveWorkoutScreen: View {
 
                     ScrollView {
                         VStack(spacing: 12) {
-                            ForEach(state.exercises) { exercise in
+                            ForEach(Array(state.exercises.enumerated()), id: \.element.id) { index, exercise in
+                                RepSyncReorderDropZone(
+                                    index: index,
+                                    isEnabled: canDropActiveExercise(at: index),
+                                    draggingID: $draggingExerciseID,
+                                    highlightedIndex: $highlightedExerciseDropIndex,
+                                    onDrop: { sourceID, targetIndex in
+                                        appModel.moveActiveExercise(id: sourceID, to: targetIndex)
+                                    },
+                                    onEnd: {
+                                        appModel.commitActiveExerciseOrder()
+                                    }
+                                )
+
                                 if let exerciseBinding = binding(for: exercise.id) {
                                     ActiveExerciseCard(exercise: exerciseBinding)
+                                        .onDrag {
+                                            draggingExerciseID = exercise.id
+                                            return NSItemProvider(object: exercise.id.uuidString as NSString)
+                                        } preview: {
+                                            ActiveExerciseDragPreview(exercise: exercise)
+                                        }
                                 }
+                            }
+
+                            if !state.exercises.isEmpty {
+                                RepSyncReorderDropZone(
+                                    index: state.exercises.count,
+                                    isEnabled: canDropActiveExercise(at: state.exercises.count),
+                                    draggingID: $draggingExerciseID,
+                                    highlightedIndex: $highlightedExerciseDropIndex,
+                                    onDrop: { sourceID, targetIndex in
+                                        appModel.moveActiveExercise(id: sourceID, to: targetIndex)
+                                    },
+                                    onEnd: {
+                                        appModel.commitActiveExerciseOrder()
+                                    }
+                                )
                             }
 
                             Button {
@@ -65,7 +102,7 @@ struct ActiveWorkoutScreen: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                     }
-                    .scrollDismissesKeyboard(.immediately)
+                    .scrollDismissesKeyboard(.interactively)
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             dismissKeyboard()
@@ -164,8 +201,9 @@ struct ActiveWorkoutScreen: View {
         Binding(
             get: { appModel.activeWorkoutState?[keyPath: keyPath] ?? fallbackValue(for: keyPath) },
             set: {
-                guard appModel.activeWorkoutState != nil else { return }
-                appModel.activeWorkoutState?[keyPath: keyPath] = $0
+                guard var state = appModel.activeWorkoutState else { return }
+                state[keyPath: keyPath] = $0
+                appModel.updateActiveWorkout(state)
             }
         )
     }
@@ -180,10 +218,7 @@ struct ActiveWorkoutScreen: View {
                 appModel.activeWorkoutState?.exercises.first(where: { $0.id == exerciseID }) ?? exercise
             },
             set: { updatedExercise in
-                guard let index = appModel.activeWorkoutState?.exercises.firstIndex(where: { $0.id == exerciseID }) else {
-                    return
-                }
-                appModel.activeWorkoutState?.exercises[index] = updatedExercise
+                appModel.updateActiveExercise(updatedExercise)
             }
         )
     }
@@ -210,6 +245,14 @@ struct ActiveWorkoutScreen: View {
             return "\(minutes)m"
         }
         return "\(minutes)m \(remainder)s"
+    }
+
+    private func canDropActiveExercise(at index: Int) -> Bool {
+        guard let draggingExerciseID,
+              let sourceIndex = appModel.activeWorkoutState?.exercises.firstIndex(where: { $0.id == draggingExerciseID }) else {
+            return true
+        }
+        return index != sourceIndex && index != sourceIndex + 1
     }
 }
 
@@ -344,6 +387,30 @@ private struct ActiveWorkoutMusicWidget: View {
     }
 }
 
+private struct ActiveExerciseDragPreview: View {
+    let exercise: ActiveExerciseDraft
+
+    var body: some View {
+        RepSyncCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Exercise" : exercise.name)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                RepSyncExerciseTypeBadge(trackingType: exercise.trackingType)
+
+                HStack {
+                    Text("\(exercise.sets.count) set\(exercise.sets.count == 1 ? "" : "s")")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                    Spacer()
+                }
+            }
+        }
+    }
+}
+
 private struct ActiveExerciseCard: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
     @Binding var exercise: ActiveExerciseDraft
@@ -367,6 +434,7 @@ private struct ActiveExerciseCard: View {
                         .textInputAutocapitalization(.words)
                         .onChange(of: exercise.name) { _, _ in
                             appModel.clearActiveSuggestionFlag(for: exercise.id)
+                            appModel.resolveActiveExerciseName(for: exercise.id)
                         }
                     Button {
                         appModel.removeActiveExercise(id: exercise.id)
@@ -416,40 +484,30 @@ private struct ActiveExerciseCard: View {
                     }
                 }
 
-                ForEach($exercise.sets) { $set in
-                    SwipeableSetCard(
-                        isRemovable: exercise.sets.count > 1 && set.setNumber > 1,
-                        onRemove: {
-                            dismissKeyboard()
-                            appModel.removeSet(from: exercise.id, setID: set.id)
-                        }
-                    ) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(alignment: .center, spacing: 12) {
-                                setNumberButton(for: $set, totalSetCount: exercise.sets.count)
-                                Spacer()
-                                if !set.previous.isEmpty {
-                                    Text(set.previous)
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
+                List {
+                    ForEach($exercise.sets) { $set in
+                        setRow(for: $set)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                if exercise.sets.count > 1 && set.setNumber > 1 {
+                                    Button(role: .destructive) {
+                                        dismissKeyboard()
+                                        appModel.removeSet(from: exercise.id, setID: set.id)
+                                    } label: {
+                                        Text("Remove")
+                                    }
+                                    .tint(RepSyncTheme.destructive)
                                 }
-                                Button {
-                                    dismissKeyboard()
-                                    appModel.toggleSetCompleted(for: exercise.id, setID: set.id)
-                                } label: {
-                                    Image(systemName: set.isComplete ? "checkmark.circle.fill" : "checkmark.circle")
-                                        .foregroundStyle(set.isComplete ? RepSyncTheme.checkmark : RepSyncTheme.textSecondary)
-                                        .font(.system(size: 20))
-                                        .opacity(appModel.canToggleSetCompleted(for: exercise.id, setID: set.id) ? 1 : 0.4)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!appModel.canToggleSetCompleted(for: exercise.id, setID: set.id))
                             }
-
-                            fields(for: $set, trackingType: exercise.trackingType)
-                        }
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                            .listRowBackground(RepSyncTheme.card)
+                            .listRowSeparator(.hidden)
                     }
                 }
+                .listStyle(.plain)
+                .scrollDisabled(true)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                .frame(height: setListHeight)
 
                 Button {
                     dismissKeyboard()
@@ -466,6 +524,49 @@ private struct ActiveExerciseCard: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private var setListHeight: CGFloat {
+        CGFloat(exercise.sets.count) * setListRowHeight
+    }
+
+    private var setListRowHeight: CGFloat {
+        switch exercise.trackingType {
+        case .durationDistance:
+            return 148
+        case .weightReps, .duration:
+            return 100
+        }
+    }
+
+    private func setRow(for set: Binding<ActiveSetDraft>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 12) {
+                setNumberButton(for: set, totalSetCount: exercise.sets.count)
+                Spacer()
+                if !set.wrappedValue.previous.isEmpty {
+                    Text(set.wrappedValue.previous)
+                        .font(.system(size: 13))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                }
+                Button {
+                    dismissKeyboard()
+                    appModel.toggleSetCompleted(for: exercise.id, setID: set.wrappedValue.id)
+                } label: {
+                    Image(systemName: set.wrappedValue.isComplete ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(set.wrappedValue.isComplete ? RepSyncTheme.checkmark : RepSyncTheme.textSecondary)
+                        .font(.system(size: 20))
+                        .opacity(appModel.canToggleSetCompleted(for: exercise.id, setID: set.wrappedValue.id) ? 1 : 0.4)
+                }
+                .buttonStyle(.plain)
+                .disabled(!appModel.canToggleSetCompleted(for: exercise.id, setID: set.wrappedValue.id))
+            }
+
+            fields(for: set, trackingType: exercise.trackingType)
+        }
+        .padding(12)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     @ViewBuilder
@@ -517,103 +618,6 @@ private struct ActiveExerciseCard: View {
         return Text("Set \(set.wrappedValue.setNumber)")
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(RepSyncTheme.textSecondary)
-    }
-}
-
-private struct SwipeableSetCard<Content: View>: View {
-    private let actionWidth: CGFloat = 96
-    private let revealThreshold: CGFloat = 46
-    private let fullSwipeThreshold: CGFloat = 140
-    private let removalAnimationDuration: Double = 0.22
-    private let maxDragDistance: CGFloat = UIScreen.main.bounds.width + 60
-
-    let isRemovable: Bool
-    let onRemove: () -> Void
-    @ViewBuilder let content: Content
-
-    @State private var settledOffset: CGFloat = 0
-    @State private var isRemoving = false
-    @GestureState private var dragOffset: CGFloat = 0
-
-    private var effectiveOffset: CGFloat {
-        min(0, settledOffset + dragOffset)
-    }
-
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isRemovable ? RepSyncTheme.destructive : RepSyncTheme.cardElevated)
-
-            if isRemovable {
-                HStack {
-                    Spacer()
-                    Button(role: .destructive) {
-                        animateRemoval()
-                    } label: {
-                        Text("Remove")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(RepSyncTheme.textPrimary)
-                            .frame(width: actionWidth)
-                            .frame(maxHeight: .infinity)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            content
-                .padding(12)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .offset(x: effectiveOffset)
-                .opacity(isRemoving ? 0.9 : 1)
-                .scaleEffect(isRemoving ? 0.985 : 1, anchor: .center)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(Rectangle())
-        .gesture(isRemovable ? swipeGesture : nil)
-        .allowsHitTesting(!isRemoving)
-        .animation(.interactiveSpring(response: 0.24, dampingFraction: 0.84), value: settledOffset)
-        .animation(.easeOut(duration: removalAnimationDuration), value: isRemoving)
-    }
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .local)
-            .updating($dragOffset) { value, state, _ in
-                guard !isRemoving else { return }
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                let translation = value.translation.width
-                if translation <= 0 {
-                    state = max(-maxDragDistance, translation)
-                } else if settledOffset < 0 {
-                    state = min(-settledOffset, translation)
-                }
-            }
-            .onEnded { value in
-                guard !isRemoving else { return }
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-
-                let finalOffset = min(0, settledOffset + value.translation.width)
-                if finalOffset <= -fullSwipeThreshold {
-                    animateRemoval()
-                } else if finalOffset <= -revealThreshold {
-                    settledOffset = -actionWidth
-                } else {
-                    settledOffset = 0
-                }
-            }
-    }
-
-    private func animateRemoval() {
-        guard !isRemoving else { return }
-
-        isRemoving = true
-        withAnimation(.easeOut(duration: removalAnimationDuration)) {
-            settledOffset = -(UIScreen.main.bounds.width + 60)
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + removalAnimationDuration) {
-            onRemove()
-        }
     }
 }
 

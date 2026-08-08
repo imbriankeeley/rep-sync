@@ -23,6 +23,19 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		0D7031522F95216100D40F11 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		0DF57AE52F92A1120064FCC6 /* RepSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RepSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0DF57AF92F92A1140064FCC6 /* RepSyncTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RepSyncTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -30,6 +43,122 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0D70314E2F951DE900D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "RepSyncUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				.gitignore,
+				"/Localized: DemoProjects/NowPlayingView/NowPlayingView/LaunchScreen.storyboard",
+				"/Localized: DemoProjects/NowPlayingView/NowPlayingView/Main.storyboard",
+				"/Localized: DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/LaunchScreen.storyboard",
+				"/Localized: DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/LaunchScreen.storyboard",
+				"catalog-info.yaml",
+				CHANGELOG.md,
+				"DemoProjects/.ruby-version",
+				DemoProjects/NowPlayingView/NowPlayingView/AppDelegate.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/Assets.xcassets,
+				DemoProjects/NowPlayingView/NowPlayingView/ConnectionStatusIndicatorView.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/ContentCollectionViewController.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/ContentItemCell.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/Info.plist,
+				"DemoProjects/NowPlayingView/NowPlayingView/My-Extensions.swift",
+				DemoProjects/NowPlayingView/NowPlayingView/PlaybackButtonGraphics.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/SceneDelegate.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/SpeedPickerViewController.swift,
+				DemoProjects/NowPlayingView/NowPlayingView/ViewController.swift,
+				DemoProjects/NowPlayingView/project.yml,
+				DemoProjects/NowPlayingView/README.md,
+				DemoProjects/README.md,
+				DemoProjects/spotify_token_swap.rb,
+				DemoProjects/SPTLoginSampleAppObjc/project.yml,
+				DemoProjects/SPTLoginSampleAppObjc/README.md,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/AppDelegate.m,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/Assets.xcassets,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/ConnectButton.m,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/ConnectView.m,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/Info.plist,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/main.m,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/SceneDelegate.m,
+				DemoProjects/SPTLoginSampleAppObjc/SPTLoginSampleAppObjc/ViewController.m,
+				DemoProjects/SPTLoginSampleAppSwift/project.yml,
+				DemoProjects/SPTLoginSampleAppSwift/README.md,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/AppDelegate.swift,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/Assets.xcassets,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/ConnectButton.swift,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/Info.plist,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/SceneDelegate.swift,
+				DemoProjects/SPTLoginSampleAppSwift/SPTLoginSampleAppSwift/ViewController.swift,
+				docs/auth.md,
+				docs/html/Blocks/SPTAppRemoteCallback.html,
+				docs/html/Classes/SPTAppRemote.html,
+				docs/html/Classes/SPTAppRemoteConnectionParams.html,
+				docs/html/Classes/SPTConfiguration.html,
+				docs/html/Classes/SPTError.html,
+				docs/html/Classes/SPTSession.html,
+				docs/html/Classes/SPTSessionManager.html,
+				docs/html/Constants/SPTAppRemoteConnectionParamsImageFormat.html,
+				docs/html/Constants/SPTAppRemoteErrorCode.html,
+				docs/html/Constants/SPTAppRemoteLogLevel.html,
+				docs/html/Constants/SPTAppRemotePlaybackOptionsRepeatMode.html,
+				docs/html/Constants/SPTAuthorizationOptions.html,
+				docs/html/Constants/SPTErrorCode.html,
+				docs/html/Constants/SPTScope.html,
+				docs/html/css/scss/_index.scss,
+				docs/html/css/scss/_layout.scss,
+				docs/html/css/scss/_normalize.scss,
+				docs/html/css/scss/_object.scss,
+				docs/html/css/scss/_print.scss,
+				docs/html/css/scss/_variables.scss,
+				docs/html/css/scss/_xcode.scss,
+				docs/html/css/scss/style.scss,
+				docs/html/css/style.css,
+				docs/html/hierarchy.html,
+				docs/html/img/button_bar_background.png,
+				docs/html/img/disclosure_open.png,
+				docs/html/img/disclosure.png,
+				docs/html/img/library_background.png,
+				docs/html/img/title_background.png,
+				docs/html/index.html,
+				docs/html/js/script.js,
+				docs/html/Protocols/SPTAppRemoteAlbum.html,
+				docs/html/Protocols/SPTAppRemoteArtist.html,
+				docs/html/Protocols/SPTAppRemoteConnectivityAPI.html,
+				docs/html/Protocols/SPTAppRemoteConnectivityAPIDelegate.html,
+				docs/html/Protocols/SPTAppRemoteConnectivityState.html,
+				docs/html/Protocols/SPTAppRemoteContentAPI.html,
+				docs/html/Protocols/SPTAppRemoteContentItem.html,
+				docs/html/Protocols/SPTAppRemoteCrossfadeState.html,
+				docs/html/Protocols/SPTAppRemoteDelegate.html,
+				docs/html/Protocols/SPTAppRemoteImageAPI.html,
+				docs/html/Protocols/SPTAppRemoteImageRepresentable.html,
+				docs/html/Protocols/SPTAppRemoteLibraryState.html,
+				docs/html/Protocols/SPTAppRemotePlaybackOptions.html,
+				docs/html/Protocols/SPTAppRemotePlaybackRestrictions.html,
+				docs/html/Protocols/SPTAppRemotePlayerAPI.html,
+				docs/html/Protocols/SPTAppRemotePlayerState.html,
+				docs/html/Protocols/SPTAppRemotePlayerStateDelegate.html,
+				docs/html/Protocols/SPTAppRemotePodcastPlaybackSpeed.html,
+				docs/html/Protocols/SPTAppRemoteTrack.html,
+				docs/html/Protocols/SPTAppRemoteUserAPI.html,
+				docs/html/Protocols/SPTAppRemoteUserAPIDelegate.html,
+				docs/html/Protocols/SPTAppRemoteUserCapabilities.html,
+				docs/html/Protocols/SPTSessionManagerDelegate.html,
+				img/import_sdk.png,
+				img/info_plist.png,
+				"img/xcframework-import.png",
+				"Licenses/MPMessagePack-LICENSE.md",
+				Package.swift,
+				README.md,
+				SpotifyiOS.xcframework,
+			);
+			target = 0DF57B022F92A1140064FCC6 /* RepSyncUITests */;
+		};
+		0D7031532F95216200D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "RepSync" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				SpotifyiOS.xcframework,
+			);
+			target = 0DF57AE42F92A1120064FCC6 /* RepSync */;
+		};
 		0DF57B0B2F92A1140064FCC6 /* Exceptions for "RepSync" folder in "RepSync" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -39,7 +168,30 @@
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		0D7031542F95216200D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "Embed Frameworks" phase from "RepSync" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			attributesByRelativePath = {
+				SpotifyiOS.xcframework = (CodeSignOnCopy, RemoveHeadersOnCopy, );
+			};
+			buildPhase = 0D7031522F95216100D40F11 /* Embed Frameworks */;
+			membershipExceptions = (
+				SpotifyiOS.xcframework,
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		0D70314D2F951DE800D40F11 /* ios-sdk-5.0.1 */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0D7031532F95216200D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "RepSync" target */,
+				0D7031542F95216200D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "Embed Frameworks" phase from "RepSync" target */,
+				0D70314E2F951DE900D40F11 /* Exceptions for "ios-sdk-5.0.1" folder in "RepSyncUITests" target */,
+			);
+			path = "ios-sdk-5.0.1";
+			sourceTree = "<group>";
+		};
 		0DF57AE72F92A1120064FCC6 /* RepSync */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -85,6 +237,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0D70314F2F95216100D40F11 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		0DF57ADC2F92A1120064FCC6 = {
 			isa = PBXGroup;
 			children = (
@@ -92,6 +251,8 @@
 				0DF57AFC2F92A1140064FCC6 /* RepSyncTests */,
 				0DF57B062F92A1140064FCC6 /* RepSyncUITests */,
 				0DF57AE62F92A1120064FCC6 /* Products */,
+				0D70314D2F951DE800D40F11 /* ios-sdk-5.0.1 */,
+				0D70314F2F95216100D40F11 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -115,6 +276,7 @@
 				0DF57AE12F92A1120064FCC6 /* Sources */,
 				0DF57AE22F92A1120064FCC6 /* Frameworks */,
 				0DF57AE32F92A1120064FCC6 /* Resources */,
+				0D7031522F95216100D40F11 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -167,6 +329,7 @@
 				0DF57B052F92A1140064FCC6 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				0D70314D2F951DE800D40F11 /* ios-sdk-5.0.1 */,
 				0DF57B062F92A1140064FCC6 /* RepSyncUITests */,
 			);
 			name = RepSyncUITests;
@@ -294,6 +457,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RepSync/Info.plist;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "RepSync uses Apple Music so you can control workout audio from inside the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -304,6 +468,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.imbriankeeley.RepSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -328,6 +493,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RepSync/Info.plist;
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "RepSync uses Apple Music so you can control workout audio from inside the app.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -338,6 +504,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = com.imbriankeeley.RepSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

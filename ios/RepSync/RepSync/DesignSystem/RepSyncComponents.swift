@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 struct RepSyncCard<Content: View>: View {
@@ -62,13 +63,13 @@ struct RepSyncBottomNavBar: View {
     @Binding var selectedTab: RepSyncTab
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 8) {
             ForEach(RepSyncTab.allCases, id: \.self) { tab in
                 Button {
                     selectedTab = tab
                 } label: {
                     Text(tab.rawValue)
-                        .font(.system(size: 20, weight: selectedTab == tab ? .semibold : .medium))
+                        .font(.system(size: 16, weight: selectedTab == tab ? .semibold : .medium))
                         .foregroundStyle(selectedTab == tab ? RepSyncTheme.textPrimary : RepSyncTheme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .frame(height: 56)
@@ -116,7 +117,7 @@ struct RepSyncProfileAvatar: View {
         ZStack {
             Circle().fill(RepSyncTheme.cardLight)
             if let imagePath,
-               let image = UIImage(contentsOfFile: imagePath) {
+               let image = profileAvatarImage(from: imagePath) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -128,6 +129,34 @@ struct RepSyncProfileAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+    }
+
+    private func profileAvatarImage(from storedValue: String) -> UIImage? {
+        let fileManager = FileManager.default
+        let directURL = URL(fileURLWithPath: storedValue)
+
+        if fileManager.fileExists(atPath: directURL.path),
+           let image = UIImage(contentsOfFile: directURL.path) {
+            return image
+        }
+
+        let filename = directURL.lastPathComponent
+        guard !filename.isEmpty else {
+            return nil
+        }
+
+        guard let directory = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appendingPathComponent("RepSync", isDirectory: true) else {
+            return nil
+        }
+
+        let resolvedURL = directory.appendingPathComponent(filename)
+        guard fileManager.fileExists(atPath: resolvedURL.path) else { return nil }
+        return UIImage(contentsOfFile: resolvedURL.path)
     }
 }
 
@@ -201,6 +230,7 @@ struct RepSyncStreakBadge: View {
 
 struct RepSyncLineChart: View {
     let points: [ChartPoint]
+    var trendPoints: [ChartPoint] = []
     let label: String
 
     var body: some View {
@@ -214,10 +244,30 @@ struct RepSyncLineChart: View {
                         .font(.system(size: 14))
                         .foregroundStyle(RepSyncTheme.textSecondary)
                 } else {
-                    let values = points.map(\.value)
+                    let visibleTrendPoints = trendPoints.count >= 2 ? trendPoints : []
+                    let values = points.map(\.value) + visibleTrendPoints.map(\.value)
                     let minValue = values.min() ?? 0
                     let maxValue = values.max() ?? 1
                     let range = max(maxValue - minValue, 1)
+
+                    if visibleTrendPoints.count >= 2 {
+                        Path { path in
+                            for (index, point) in visibleTrendPoints.enumerated() {
+                                let x = geometry.size.width * CGFloat(index) / CGFloat(max(visibleTrendPoints.count - 1, 1))
+                                let normalizedY = (point.value - minValue) / range
+                                let y = geometry.size.height - CGFloat(normalizedY) * (geometry.size.height - 24) - 12
+                                if index == 0 {
+                                    path.move(to: CGPoint(x: x, y: y))
+                                } else {
+                                    path.addLine(to: CGPoint(x: x, y: y))
+                                }
+                            }
+                        }
+                        .stroke(
+                            RepSyncTheme.textPrimary.opacity(0.72),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                        )
+                    }
 
                     Path { path in
                         for (index, point) in points.enumerated() {
@@ -249,6 +299,16 @@ struct RepSyncLineChart: View {
                                 .font(.system(size: 12))
                                 .foregroundStyle(RepSyncTheme.textSecondary)
                             Spacer()
+                            if visibleTrendPoints.count >= 2 {
+                                HStack(spacing: 5) {
+                                    Capsule()
+                                        .fill(RepSyncTheme.textPrimary.opacity(0.72))
+                                        .frame(width: 16, height: 2)
+                                    Text("Trend")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(RepSyncTheme.textSecondary)
+                                }
+                            }
                         }
                         Spacer()
                         HStack {
@@ -282,6 +342,67 @@ struct RepSyncField: View {
         .padding(.vertical, 14)
         .background(RepSyncTheme.input)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+struct RepSyncReorderDropZone: View {
+    let index: Int
+    var isEnabled = true
+    @Binding var draggingID: UUID?
+    @Binding var highlightedIndex: Int?
+    let onDrop: (UUID, Int) -> Void
+    var onEnd: (() -> Void)?
+
+    var body: some View {
+        Color.clear
+        .frame(maxWidth: .infinity)
+        .frame(height: 8)
+        .contentShape(Rectangle())
+        .onDrop(
+            of: [.text],
+            delegate: RepSyncReorderDropDelegate(
+                index: index,
+                isEnabled: isEnabled,
+                draggingID: $draggingID,
+                highlightedIndex: $highlightedIndex,
+                onDrop: onDrop,
+                onEnd: onEnd
+            )
+        )
+    }
+}
+
+private struct RepSyncReorderDropDelegate: DropDelegate {
+    let index: Int
+    let isEnabled: Bool
+    @Binding var draggingID: UUID?
+    @Binding var highlightedIndex: Int?
+    let onDrop: (UUID, Int) -> Void
+    let onEnd: (() -> Void)?
+
+    func dropEntered(info: DropInfo) {
+        guard isEnabled, let draggingID else { return }
+        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.86)) {
+            onDrop(draggingID, index)
+        }
+        highlightedIndex = index
+    }
+
+    func dropExited(info: DropInfo) {
+        if highlightedIndex == index {
+            highlightedIndex = nil
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        isEnabled ? DropProposal(operation: .move) : nil
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        onEnd?()
+        self.draggingID = nil
+        highlightedIndex = nil
+        return true
     }
 }
 

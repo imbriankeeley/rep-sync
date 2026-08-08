@@ -3,15 +3,27 @@ import UIKit
 
 enum RepSyncTab: String, CaseIterable, Hashable {
     case home = "Home"
+    case leaderboard = "Leaderboard"
     case profile = "Profile"
 }
 
-enum MusicProvider: String, CaseIterable, Identifiable {
+enum MusicProvider: String, CaseIterable, Identifiable, Codable {
     case appleMusic = "Apple Music"
     case spotify = "Spotify"
-    case youtubeMusic = "YouTube Music"
 
     var id: String { rawValue }
+}
+
+enum AppleMusicConnectionState: Equatable {
+    case notConnected
+    case refreshing
+    case ready
+    case noLibrary
+    case unsubscribed
+    case limited
+    case authorizationDenied
+    case deviceUnavailable
+    case libraryUnavailable
 }
 
 enum RepSyncRoute: Hashable {
@@ -24,7 +36,7 @@ enum RepSyncRoute: Hashable {
     case editProfile
 }
 
-enum ExerciseTrackingKind: String, CaseIterable, Identifiable {
+enum ExerciseTrackingKind: String, CaseIterable, Identifiable, Codable {
     case weightReps = "weight_reps"
     case duration = "duration"
     case durationDistance = "duration_distance"
@@ -74,6 +86,21 @@ enum WorkoutWeekday: Int, CaseIterable, Identifiable, Hashable {
         case .saturday: return "Saturday"
         }
     }
+}
+
+enum TrainingAge: String, CaseIterable, Identifiable {
+    case beginner = "Beginner"
+    case intermediate = "Intermediate"
+    case advanced = "Advanced"
+
+    var id: String { rawValue }
+}
+
+enum BiologicalSex: String, CaseIterable, Identifiable {
+    case male = "Male"
+    case female = "Female"
+
+    var id: String { rawValue }
 }
 
 struct ActiveWorkoutBannerModel {
@@ -144,7 +171,7 @@ struct WorkoutEditorScreenState {
     var musicPlaylistURL: String?
 }
 
-struct ActiveSetDraft: Identifiable, Equatable {
+struct ActiveSetDraft: Identifiable, Equatable, Codable {
     let id: UUID
     var setNumber: Int
     var previous: String
@@ -170,7 +197,7 @@ struct ActiveSetDraft: Identifiable, Equatable {
     }
 }
 
-struct ActiveExerciseDraft: Identifiable, Equatable {
+struct ActiveExerciseDraft: Identifiable, Equatable, Codable {
     let id: UUID
     var name: String
     var trackingType: ExerciseTrackingKind
@@ -188,7 +215,7 @@ struct ActiveExerciseDraft: Identifiable, Equatable {
     }
 }
 
-struct ActiveWorkoutScreenState {
+struct ActiveWorkoutScreenState: Codable {
     var templateID: UUID?
     var isQuickWorkout: Bool
     var workoutName: String
@@ -204,7 +231,15 @@ struct ActiveWorkoutScreenState {
 struct CompletedExerciseRow: Identifiable {
     let id = UUID()
     let name: String
+    let trackingType: ExerciseTrackingKind
+    let sets: [CompletedSetRow]
+}
+
+struct CompletedSetRow: Identifiable {
+    let id = UUID()
+    let setNumber: Int
     let summary: String
+    let isBestSet: Bool
 }
 
 struct CompletedWorkoutCardModel: Identifiable {
@@ -224,6 +259,26 @@ struct ChartPoint: Identifiable {
     let id = UUID()
     let date: Date
     let value: Double
+}
+
+enum BodyweightChartRange: String, CaseIterable, Identifiable {
+    case sevenDays = "7D"
+    case thirtyDays = "30D"
+    case ninetyDays = "90D"
+    case year = "1Y"
+    case allTime = "All"
+
+    var id: String { rawValue }
+
+    var dayCount: Int? {
+        switch self {
+        case .sevenDays: return 7
+        case .thirtyDays: return 30
+        case .ninetyDays: return 90
+        case .year: return 365
+        case .allTime: return nil
+        }
+    }
 }
 
 struct ExerciseSessionModel: Identifiable {
@@ -246,6 +301,7 @@ struct BodyweightEntryModel: Identifiable {
     let dateText: String
     let weightText: String
     let value: Double
+    let photoPath: String?
 }
 
 struct ExerciseSuggestion: Identifiable, Hashable {
@@ -278,11 +334,20 @@ struct ProfileScreenState {
     var avatarPath: String?
     var workoutCount = 0
     var streak = 0
+    var height = ""
+    var age = ""
+    var birthdate: Date?
+    var sex: BiologicalSex = .male
+    var trainingAge: TrainingAge = .beginner
     var latestWeight = "-"
     var bodyweightTrendText: String?
     var bodyweightTrendIsStable = false
     var bodyweightTrendHelperText: String?
+    var bodyweightTrendingWeightText: String?
+    var bodyweightTenDayLowText: String?
+    var bodyweightChartRange: BodyweightChartRange = .thirtyDays
     var chartPoints: [ChartPoint] = []
+    var trendChartPoints: [ChartPoint] = []
     var recentEntries: [BodyweightEntryModel] = []
     var workoutDays: Set<WorkoutWeekday> = []
     var reminderEnabled = false
@@ -321,6 +386,14 @@ extension DateFormatter {
         formatter.dateFormat = "MMM d, yyyy"
         return formatter
     }()
+
+    static let repsyncISODate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }
 
 extension Calendar {
@@ -341,4 +414,24 @@ func formatWeight(_ value: Double) -> String {
         return String(Int(value))
     }
     return String(format: "%.1f", value)
+}
+
+func normalizedExerciseName(_ value: String) -> String {
+    let words = value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .split(whereSeparator: { $0.isWhitespace })
+        .map(String.init)
+
+    return words
+        .map { word in
+            guard let first = word.first else { return word }
+            return first.uppercased() + word.dropFirst().lowercased()
+        }
+        .joined(separator: " ")
+}
+
+func exerciseNameMatchKey(_ value: String) -> String {
+    normalizedExerciseName(value)
+        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        .lowercased()
 }

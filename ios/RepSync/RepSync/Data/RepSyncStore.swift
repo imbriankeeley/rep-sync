@@ -12,6 +12,8 @@ struct ExerciseHistorySample {
 final class RepSyncStore {
     private let context: NSManagedObjectContext
     private let bodyweightStableThresholdLbsPerWeek = 0.1
+    private let bodyweightTrendSmoothingFactor = 0.2
+    private let bodyweightTrendMaxDailySwing = 2.5
 
     init(context: NSManagedObjectContext) {
         self.context = context
@@ -59,9 +61,11 @@ final class RepSyncStore {
         }
 
         for (index, draft) in exercises.enumerated() {
+            let exerciseName = normalizedExerciseName(draft.name)
+            guard !exerciseName.isEmpty else { continue }
             let exercise = TemplateExercise(context: context)
             exercise.id = UUID()
-            exercise.name = draft.name
+            exercise.name = exerciseName
             exercise.orderIndex = Int64(index)
             exercise.setCount = Int64(max(draft.setCount, 1))
             exercise.templateID = template.id
@@ -79,6 +83,26 @@ final class RepSyncStore {
             try save()
             try normalizeTemplateOrder()
         }
+    }
+
+    func reorderWorkoutTemplates(ids: [UUID]) throws {
+        let templates = try fetchWorkoutTemplates()
+        let templatesByID = Dictionary(uniqueKeysWithValues: templates.compactMap { template -> (UUID, WorkoutTemplate)? in
+            guard let id = template.id else { return nil }
+            return (id, template)
+        })
+
+        var orderedTemplates = ids.compactMap { templatesByID[$0] }
+        let reorderedIDs = Set(ids)
+        orderedTemplates.append(contentsOf: templates.filter { template in
+            guard let id = template.id else { return true }
+            return !reorderedIDs.contains(id)
+        })
+
+        for (index, template) in orderedTemplates.enumerated() {
+            template.orderIndex = Int64(index)
+        }
+        try save()
     }
 
     func fetchCompletedWorkouts(on day: Date? = nil) throws -> [CompletedWorkout] {
@@ -127,9 +151,11 @@ final class RepSyncStore {
         workout.isQuickWorkout = draft.isQuickWorkout
 
         for (exerciseIndex, exerciseDraft) in draft.exercises.enumerated() where !exerciseDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let exerciseName = normalizedExerciseName(exerciseDraft.name)
+            guard !exerciseName.isEmpty else { continue }
             let exercise = CompletedExercise(context: context)
             exercise.id = UUID()
-            exercise.name = exerciseDraft.name
+            exercise.name = exerciseName
             exercise.orderIndex = Int64(exerciseIndex)
             exercise.trackingType = exerciseDraft.trackingType.rawValue
             exercise.workoutID = workout.id
@@ -187,10 +213,30 @@ final class RepSyncStore {
         try save()
     }
 
+    func updateCompletedWorkoutDate(id: UUID, on date: Date) throws {
+        guard let completed = try fetchCompletedWorkout(id: id) else { return }
+
+        let targetDay = Calendar.repsync.startOfDay(for: date)
+        if let startedAt = completed.startedAt {
+            let timeComponents = Calendar.repsync.dateComponents([.hour, .minute, .second], from: startedAt)
+            completed.startedAt = Calendar.repsync.date(bySettingHour: timeComponents.hour ?? 0, minute: timeComponents.minute ?? 0, second: timeComponents.second ?? 0, of: targetDay) ?? targetDay
+        }
+
+        if let endedAt = completed.endedAt,
+           let startedAt = completed.startedAt {
+            let duration = endedAt.timeIntervalSince(startedAt)
+            completed.endedAt = startedAt.addingTimeInterval(max(duration, 0))
+        }
+
+        completed.performedOn = targetDay
+        try save()
+    }
+
     func latestPreviousSummary(for exerciseName: String, setNumber: Int) throws -> String {
+        let canonicalName = normalizedExerciseName(exerciseName)
         let request: NSFetchRequest<CompletedExercise> = CompletedExercise.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(key: "orderIndex", ascending: true)]
-        request.predicate = NSPredicate(format: "name == %@", exerciseName)
+        request.predicate = NSPredicate(format: "name ==[cd] %@", canonicalName)
         let exercises = try context.fetch(request)
 
         var matches: [(workoutDate: Date, exercise: CompletedExercise, set: CompletedSet)] = []
@@ -226,7 +272,8 @@ final class RepSyncStore {
         for exercise in try context.fetch(templateRequest) {
             guard let name = exercise.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { continue }
             let trackingType = ExerciseTrackingKind(rawValue: exercise.trackingType ?? "") ?? .weightReps
-            suggestionsByName[name.lowercased()] = ExerciseSuggestion(name: name, trackingType: trackingType)
+            let canonicalName = normalizedExerciseName(name)
+            suggestionsByName[exerciseNameMatchKey(canonicalName)] = ExerciseSuggestion(name: canonicalName, trackingType: trackingType)
         }
 
         let completedRequest: NSFetchRequest<CompletedExercise> = CompletedExercise.fetchRequest()
@@ -234,15 +281,26 @@ final class RepSyncStore {
         completedRequest.predicate = NSPredicate(format: "name CONTAINS[cd] %@", trimmed)
         for exercise in try context.fetch(completedRequest) {
             guard let name = exercise.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { continue }
-            if suggestionsByName[name.lowercased()] != nil {
+            let canonicalName = normalizedExerciseName(name)
+            let key = exerciseNameMatchKey(canonicalName)
+            if suggestionsByName[key] != nil {
                 continue
             }
             let trackingType = ExerciseTrackingKind(rawValue: exercise.trackingType ?? "") ?? .weightReps
-            suggestionsByName[name.lowercased()] = ExerciseSuggestion(name: name, trackingType: trackingType)
+            suggestionsByName[key] = ExerciseSuggestion(name: canonicalName, trackingType: trackingType)
         }
 
         return suggestionsByName.values.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    func exactExerciseSuggestion(matching query: String) throws -> ExerciseSuggestion? {
+        let matchKey = exerciseNameMatchKey(query)
+        guard !matchKey.isEmpty else { return nil }
+
+        return try exerciseSuggestions(matching: normalizedExerciseName(query)).first {
+            exerciseNameMatchKey($0.name) == matchKey
         }
     }
 
@@ -326,6 +384,13 @@ final class RepSyncStore {
         try save()
     }
 
+    func setBiometricPreferences(height: String, birthdate: Date?, sex: BiologicalSex, trainingAge: TrainingAge) throws {
+        try setStringPreference(height.trimmingCharacters(in: .whitespacesAndNewlines), for: profileHeightKey)
+        try setStringPreference(birthdate.map(DateFormatter.repsyncISODate.string(from:)) ?? "", for: profileBirthdateKey)
+        try setStringPreference(sex.rawValue, for: profileSexKey)
+        try setStringPreference(trainingAge.rawValue, for: profileTrainingAgeKey)
+    }
+
     func fetchBodyweightEntries() throws -> [BodyweightEntry] {
         let request: NSFetchRequest<BodyweightEntry> = BodyweightEntry.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(key: "recordedOn", ascending: false)]
@@ -339,18 +404,20 @@ final class RepSyncStore {
         return try context.fetch(request).first
     }
 
-    func addBodyweightEntry(weight: Double, on date: Date = Date()) throws {
+    func addBodyweightEntry(weight: Double, on date: Date = Date(), photoPath: String? = nil) throws {
         let entry = BodyweightEntry(context: context)
         entry.id = UUID()
         entry.recordedOn = Calendar.repsync.startOfDay(for: date)
         entry.weight = weight
+        entry.photoPath = photoPath
         try save()
     }
 
-    func updateBodyweightEntry(id: UUID, weight: Double, on date: Date) throws {
+    func updateBodyweightEntry(id: UUID, weight: Double, on date: Date, photoPath: String? = nil) throws {
         guard let entry = try fetchBodyweightEntry(id: id) else { return }
         entry.weight = weight
         entry.recordedOn = Calendar.repsync.startOfDay(for: date)
+        entry.photoPath = photoPath
         try save()
     }
 
@@ -395,11 +462,12 @@ final class RepSyncStore {
         return samples.sorted { $0.date > $1.date }
     }
 
-    func makeProfileState() throws -> ProfileScreenState {
+    func makeProfileState(bodyweightChartRange: BodyweightChartRange = .thirtyDays, currentDate: Date = Date()) throws -> ProfileScreenState {
         let profile = try fetchProfile()
         let entries = try fetchBodyweightEntryModels()
         let latest = entries.first?.weightText ?? "-"
         let trendSummary = makeBodyweightTrendSummary(entries: entries)
+        let workoutDays = decodeWorkoutDays(from: profile?.workoutDaysData)
         let trendHelperText: String? = {
             if entries.isEmpty {
                 return nil
@@ -411,14 +479,23 @@ final class RepSyncStore {
             displayName: profile?.displayName ?? "Guest",
             avatarPath: profile?.avatarPath,
             workoutCount: try fetchCompletedWorkouts().count,
-            streak: try currentWorkoutStreak(),
+            streak: try currentWorkoutStreak(scheduledDays: workoutDays, currentDate: currentDate),
+            height: formattedProfileHeight(try stringPreference(for: profileHeightKey)),
+            age: formattedProfileAge(from: try profileBirthdate(), currentDate: currentDate),
+            birthdate: try profileBirthdate(),
+            sex: try stringPreference(for: profileSexKey).flatMap(BiologicalSex.init(rawValue:)) ?? .male,
+            trainingAge: try stringPreference(for: profileTrainingAgeKey).flatMap(TrainingAge.init(rawValue:)) ?? .beginner,
             latestWeight: latest,
             bodyweightTrendText: trendSummary?.text,
             bodyweightTrendIsStable: trendSummary?.isStable ?? false,
             bodyweightTrendHelperText: trendHelperText,
-            chartPoints: entries.reversed().map { ChartPoint(date: $0.date, value: $0.value) },
+            bodyweightTrendingWeightText: makeTrendingWeightText(entries: entries),
+            bodyweightTenDayLowText: makeTenDayLowText(entries: entries),
+            bodyweightChartRange: bodyweightChartRange,
+            chartPoints: bodyweightChartPoints(entries: entries, range: bodyweightChartRange),
+            trendChartPoints: bodyweightTrendChartPoints(entries: entries, range: bodyweightChartRange),
             recentEntries: Array(entries.prefix(3)),
-            workoutDays: decodeWorkoutDays(from: profile?.workoutDaysData),
+            workoutDays: workoutDays,
             reminderEnabled: profile?.reminderEnabled ?? false,
             reminderHour: reminderComponents(from: profile?.reminderTime).hour,
             reminderMinute: reminderComponents(from: profile?.reminderTime).minute,
@@ -465,9 +542,18 @@ final class RepSyncStore {
                 guard let exerciseID = exercise.id else { return nil }
                 let sets = try fetchCompletedSets(exerciseID: exerciseID)
                 let trackingType = ExerciseTrackingKind(rawValue: exercise.trackingType ?? "") ?? .weightReps
+                let sortedSets = sets.sorted { $0.setNumber < $1.setNumber }
+                let bestSetID = bestSet(in: sortedSets, trackingType: trackingType)?.id
                 return CompletedExerciseRow(
                     name: exercise.name ?? "Exercise",
-                    summary: sets.map { formatCompletedSet($0, trackingType: trackingType) }.joined(separator: ", ")
+                    trackingType: trackingType,
+                    sets: sortedSets.enumerated().map { index, set in
+                        CompletedSetRow(
+                            setNumber: index + 1,
+                            summary: formatCompletedSet(set, trackingType: trackingType),
+                            isBestSet: set.id == bestSetID && sortedSets.count > 1
+                        )
+                    }
                 )
             }
 
@@ -513,7 +599,8 @@ final class RepSyncStore {
                 date: date,
                 dateText: DateFormatter.repsyncShortDate.string(from: date),
                 weightText: "\(formatWeight(value)) lbs",
-                value: value
+                value: value,
+                photoPath: entry.photoPath
             ))
         }
         return models
@@ -527,20 +614,70 @@ final class RepSyncStore {
         try save()
     }
 
-    private func currentWorkoutStreak() throws -> Int {
-        let dates = try fetchAllCompletedWorkoutDates().sorted(by: >)
+    private func currentWorkoutStreak(scheduledDays: Set<WorkoutWeekday>, currentDate: Date) throws -> Int {
+        let dates = try fetchAllCompletedWorkoutDates()
         guard !dates.isEmpty else { return 0 }
+
+        guard !scheduledDays.isEmpty else {
+            return calendarDayWorkoutStreak(dates: dates, currentDate: currentDate)
+        }
+
         var streak = 0
-        var cursor = Calendar.repsync.startOfDay(for: Date())
-        if !dates.contains(cursor), let yesterday = Calendar.repsync.date(byAdding: .day, value: -1, to: cursor), dates.contains(yesterday) {
+        var cursor = Calendar.repsync.startOfDay(for: currentDate)
+        let todayWeekday = workoutWeekday(for: cursor)
+
+        if !scheduledDays.contains(todayWeekday) || !dates.contains(cursor) {
+            guard let previousScheduledDate = previousScheduledWorkoutDate(before: cursor, scheduledDays: scheduledDays) else {
+                return 0
+            }
+            cursor = previousScheduledDate
+        }
+
+        while scheduledDays.contains(workoutWeekday(for: cursor)) && dates.contains(cursor) {
+            streak += 1
+            guard let previous = previousScheduledWorkoutDate(before: cursor, scheduledDays: scheduledDays) else { break }
+            cursor = previous
+        }
+
+        return streak
+    }
+
+    private func calendarDayWorkoutStreak(dates: Set<Date>, currentDate: Date) -> Int {
+        var streak = 0
+        var cursor = Calendar.repsync.startOfDay(for: currentDate)
+        if !dates.contains(cursor),
+           let yesterday = Calendar.repsync.date(byAdding: .day, value: -1, to: cursor),
+           dates.contains(yesterday) {
             cursor = yesterday
         }
+
         while dates.contains(cursor) {
             streak += 1
             guard let previous = Calendar.repsync.date(byAdding: .day, value: -1, to: cursor) else { break }
             cursor = previous
         }
+
         return streak
+    }
+
+    private func previousScheduledWorkoutDate(before date: Date, scheduledDays: Set<WorkoutWeekday>) -> Date? {
+        guard !scheduledDays.isEmpty else { return nil }
+
+        var cursor = Calendar.repsync.startOfDay(for: date)
+        for _ in 0..<7 {
+            guard let previous = Calendar.repsync.date(byAdding: .day, value: -1, to: cursor) else { return nil }
+            cursor = previous
+            if scheduledDays.contains(workoutWeekday(for: cursor)) {
+                return cursor
+            }
+        }
+
+        return nil
+    }
+
+    private func workoutWeekday(for date: Date) -> WorkoutWeekday {
+        let rawValue = Calendar.repsync.component(.weekday, from: date)
+        return WorkoutWeekday(rawValue: rawValue) ?? .sunday
     }
 
     private func totalSeconds(minutes: String, seconds: String) -> Double? {
@@ -568,25 +705,175 @@ final class RepSyncStore {
         }
     }
 
+    private func bestSet(in sets: [CompletedSet], trackingType: ExerciseTrackingKind) -> CompletedSet? {
+        switch trackingType {
+        case .weightReps:
+            return sets.max {
+                if $0.weight == $1.weight {
+                    return $0.reps < $1.reps
+                }
+                return $0.weight < $1.weight
+            }
+        case .duration:
+            return sets.max { $0.durationSeconds < $1.durationSeconds }
+        case .durationDistance:
+            return sets.max {
+                if $0.distance == $1.distance {
+                    return $0.durationSeconds < $1.durationSeconds
+                }
+                return $0.distance < $1.distance
+            }
+        }
+    }
+
     private func makeBodyweightTrendSummary(entries: [BodyweightEntryModel]) -> (text: String, isStable: Bool)? {
-        guard entries.count >= 2 else { return nil }
+        let trendSamples = bodyweightTrendSamples(entries: entries)
+        guard let firstSample = trendSamples.first,
+              let latestSample = trendSamples.last,
+              trendSamples.count >= 2 else {
+            return nil
+        }
 
-        let newest = entries[0]
-        let oldest = entries[entries.count - 1]
-        let elapsedDays = Calendar.repsync.dateComponents([.day], from: oldest.date, to: newest.date).day ?? 0
-        guard elapsedDays >= 1 else { return nil }
+        let daySpan = Calendar.repsync.dateComponents([.day], from: firstSample.date, to: latestSample.date).day ?? 0
+        guard daySpan > 0 else { return nil }
 
-        let weeklyRate = ((newest.value - oldest.value) / Double(elapsedDays)) * 7
-        let absoluteRate = abs(weeklyRate)
+        let weeklyRate = ((latestSample.value - firstSample.value) / Double(daySpan)) * 7
+        let roundedRate = (weeklyRate * 10).rounded() / 10
+        let absoluteRate = abs(roundedRate)
 
         if absoluteRate < bodyweightStableThresholdLbsPerWeek {
-            return ("Holding steady", true)
+            return ("Maintaining 0.0 lbs/week", true)
         }
 
         let formattedRate = formatWeight(absoluteRate)
         return weeklyRate > 0
             ? ("Gaining \(formattedRate) lbs/week", false)
             : ("Losing \(formattedRate) lbs/week", false)
+    }
+
+    private func bodyweightTrendSamples(entries: [BodyweightEntryModel]) -> [(date: Date, value: Double)] {
+        guard let newestDate = entries.map(\.date).max(),
+              let windowStart = Calendar.repsync.date(byAdding: .day, value: -14, to: newestDate) else {
+            return []
+        }
+
+        let dailySamples = bodyweightDailySamples(entries: entries, startDate: windowStart, endDate: newestDate)
+        return smoothedBodyweightSamples(dailySamples)
+    }
+
+    private func makeTrendingWeightText(entries: [BodyweightEntryModel]) -> String? {
+        let samples = bodyweightTrendSamples(entries: entries)
+        guard let latestTrend = samples.last else { return nil }
+
+        return "\(formatWeight(latestTrend.value)) lbs"
+    }
+
+    private func smoothedBodyweightSamples(_ dailySamples: [(date: Date, value: Double)]) -> [(date: Date, value: Double)] {
+        guard let firstSample = dailySamples.first else { return [] }
+
+        var trendValue = firstSample.value
+        var smoothedSamples = [(date: Date, value: Double)]()
+        smoothedSamples.append((date: firstSample.date, value: trendValue))
+
+        for sample in dailySamples.dropFirst() {
+            let cappedValue = min(
+                max(sample.value, trendValue - bodyweightTrendMaxDailySwing),
+                trendValue + bodyweightTrendMaxDailySwing
+            )
+            trendValue += bodyweightTrendSmoothingFactor * (cappedValue - trendValue)
+            smoothedSamples.append((date: sample.date, value: trendValue))
+        }
+
+        return smoothedSamples
+    }
+
+    private func makeTenDayLowText(entries: [BodyweightEntryModel]) -> String? {
+        guard let newestDate = entries.map(\.date).max(),
+              let windowStart = Calendar.repsync.date(byAdding: .day, value: -9, to: newestDate) else {
+            return nil
+        }
+
+        guard let low = bodyweightDailySamples(entries: entries, startDate: windowStart, endDate: newestDate)
+            .min(by: { lhs, rhs in
+                if lhs.value == rhs.value {
+                    return lhs.date < rhs.date
+                }
+                return lhs.value < rhs.value
+            }) else {
+            return nil
+        }
+
+        return "\(formatWeight(low.value)) lbs on \(DateFormatter.repsyncShortDate.string(from: low.date))"
+    }
+
+    private func bodyweightDailySamples(entries: [BodyweightEntryModel], startDate: Date, endDate: Date) -> [(date: Date, value: Double)] {
+        let entriesInWindow = entries.filter { entry in
+            entry.date >= startDate && entry.date <= endDate
+        }
+        let valuesByDay = Dictionary(grouping: entriesInWindow) { entry in
+            Calendar.repsync.startOfDay(for: entry.date)
+        }
+
+        return valuesByDay.map { date, entries in
+            let average = entries.reduce(0) { $0 + $1.value } / Double(entries.count)
+            return (date: date, value: average)
+        }
+        .sorted { $0.date < $1.date }
+    }
+
+    private func bodyweightChartPoints(entries: [BodyweightEntryModel], range: BodyweightChartRange) -> [ChartPoint] {
+        let dailySamples = bodyweightDailySamples(entries: entries, range: range)
+        let bucketedSamples = downsampleBodyweightSamples(dailySamples, maxPointCount: 30)
+
+        return bucketedSamples.map { sample in
+            ChartPoint(date: sample.date, value: sample.value)
+        }
+    }
+
+    private func bodyweightTrendChartPoints(entries: [BodyweightEntryModel], range: BodyweightChartRange) -> [ChartPoint] {
+        let dailySamples = bodyweightDailySamples(entries: entries, range: range)
+        let smoothedSamples = smoothedBodyweightSamples(dailySamples)
+        let bucketedSamples = downsampleBodyweightSamples(smoothedSamples, maxPointCount: 30)
+
+        return bucketedSamples.map { sample in
+            ChartPoint(date: sample.date, value: sample.value)
+        }
+    }
+
+    private func bodyweightDailySamples(entries: [BodyweightEntryModel], range: BodyweightChartRange) -> [(date: Date, value: Double)] {
+        guard let newestDate = entries.map(\.date).max() else { return [] }
+
+        let windowStart = range.dayCount.flatMap { dayCount in
+            Calendar.repsync.date(byAdding: .day, value: -(dayCount - 1), to: newestDate)
+        }
+
+        let entriesInWindow = entries.filter { entry in
+            guard let windowStart else { return entry.date <= newestDate }
+            return entry.date >= windowStart && entry.date <= newestDate
+        }
+        let valuesByDay = Dictionary(grouping: entriesInWindow) { entry in
+            Calendar.repsync.startOfDay(for: entry.date)
+        }
+
+        return valuesByDay.map { date, entries in
+            let average = entries.reduce(0) { $0 + $1.value } / Double(entries.count)
+            return (date: date, value: average)
+        }
+        .sorted { $0.date < $1.date }
+    }
+
+    private func downsampleBodyweightSamples(_ samples: [(date: Date, value: Double)], maxPointCount: Int) -> [(date: Date, value: Double)] {
+        guard samples.count > maxPointCount, maxPointCount > 1 else { return samples }
+
+        return (0..<maxPointCount).compactMap { bucketIndex in
+            let startIndex = Int((Double(bucketIndex) * Double(samples.count)) / Double(maxPointCount))
+            let endIndex = Int((Double(bucketIndex + 1) * Double(samples.count)) / Double(maxPointCount))
+            let bucket = Array(samples[startIndex..<max(endIndex, startIndex + 1)])
+            guard !bucket.isEmpty else { return nil }
+
+            let averageWeight = bucket.reduce(0) { $0 + $1.value } / Double(bucket.count)
+            return (date: bucket[bucket.count / 2].date, value: averageWeight)
+        }
     }
 
     private func decodeWorkoutDays(from data: Data?) -> Set<WorkoutWeekday> {
@@ -605,6 +892,33 @@ final class RepSyncStore {
         return (components.hour ?? 18, components.minute ?? 0)
     }
 
+    private func profileBirthdate() throws -> Date? {
+        guard let value = try stringPreference(for: profileBirthdateKey),
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return DateFormatter.repsyncISODate.date(from: value)
+    }
+
+    private func formattedProfileAge(from birthdate: Date?, currentDate: Date) -> String {
+        guard let birthdate else { return "" }
+        let age = Calendar.repsync.dateComponents([.year], from: birthdate, to: currentDate).year ?? 0
+        return age >= 0 ? "\(age)" : ""
+    }
+
+    private func formattedProfileHeight(_ storedHeight: String?) -> String {
+        guard let storedHeight,
+              let totalInches = Double(storedHeight),
+              totalInches > 0 else {
+            return ""
+        }
+
+        let roundedHalfInches = (totalInches * 2).rounded() / 2
+        let feet = Int(roundedHalfInches / 12)
+        let inches = roundedHalfInches - Double(feet * 12)
+        return "\(feet)'\(formatWeight(inches))\""
+    }
+
     private func fetchPreference(for key: String) throws -> AppPreference? {
         let request: NSFetchRequest<AppPreference> = AppPreference.fetchRequest()
         request.fetchLimit = 1
@@ -615,6 +929,11 @@ final class RepSyncStore {
     private func workoutMusicProviderKey(_ templateID: UUID) -> String {
         "workout_music_provider_\(templateID.uuidString)"
     }
+
+    private let profileHeightKey = "profile_height"
+    private let profileBirthdateKey = "profile_birthdate"
+    private let profileSexKey = "profile_sex"
+    private let profileTrainingAgeKey = "profile_training_age"
 
     private func workoutMusicPlaylistIDKey(_ templateID: UUID) -> String {
         "workout_music_playlist_id_\(templateID.uuidString)"

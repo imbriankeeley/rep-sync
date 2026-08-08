@@ -13,7 +13,7 @@ RepSync is a gym-focused workout tracker for **Android and iOS**. It is built fo
 - **Quick logging**: create a workout on the fly without extra setup.
 - **Rest timer**: active workouts on iOS include a configurable rest timer with preset and custom durations.
 - **History and progress**: review completed sessions and compare previous performance.
-- **Workout audio hooks**: Apple Music playback controls are available on iOS, while Spotify and YouTube Music are currently URL/app-launch bridges.
+- **Workout audio hooks**: Apple Music playback controls are available on iOS, and Spotify is the secondary provider target for future direct integration.
 - **Compact gym UI**: dark, practical screens optimized for logging during training.
 - **Guest-friendly**: no required sign-in flow.
 

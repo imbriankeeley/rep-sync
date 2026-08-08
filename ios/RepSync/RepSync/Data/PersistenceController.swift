@@ -27,6 +27,8 @@ struct PersistenceController {
 
         description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
         description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+        description.shouldMigrateStoreAutomatically = true
+        description.shouldInferMappingModelAutomatically = true
         description.cloudKitContainerOptions = cloudKitOptionsIfConfigured()
 
         var loadError: Error?
@@ -46,6 +48,8 @@ struct PersistenceController {
 
             fallbackDescription.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
             fallbackDescription.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
+            fallbackDescription.shouldMigrateStoreAutomatically = true
+            fallbackDescription.shouldInferMappingModelAutomatically = true
             fallbackDescription.cloudKitContainerOptions = nil
 
             var fallbackError: Error?

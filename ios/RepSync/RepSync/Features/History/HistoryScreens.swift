@@ -4,6 +4,9 @@ struct DayViewScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
     @State private var templateSourceWorkoutID: UUID?
     @State private var templateName = ""
+    @State private var editingWorkoutDateID: UUID?
+    @State private var editedWorkoutDate = Date()
+    @State private var workoutToRemoveID: UUID?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,27 +57,51 @@ struct DayViewScreen: View {
                                     Button {
                                         appModel.showExerciseHistory(exercise.name)
                                     } label: {
-                                        HStack {
+                                        VStack(alignment: .leading, spacing: 6) {
                                             Text(exercise.name)
-                                                .font(.system(size: 16, weight: .medium))
-                                                .foregroundStyle(RepSyncTheme.textPrimary)
-                                            Spacer()
-                                            Text(exercise.summary)
-                                                .font(.system(size: 14))
-                                                .foregroundStyle(RepSyncTheme.textSecondary)
-                                                .multilineTextAlignment(.trailing)
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundStyle(RepSyncTheme.primaryGreen)
+                                            Text(exercise.trackingType.displayName)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundStyle(RepSyncTheme.textSecondary.opacity(0.6))
+
+                                            ForEach(exercise.sets) { set in
+                                                HStack {
+                                                    Text("\(set.setNumber)")
+                                                        .font(.system(size: 14))
+                                                        .foregroundStyle(RepSyncTheme.textSecondary)
+                                                        .frame(width: 24, alignment: .leading)
+                                                    if set.isBestSet {
+                                                        Image(systemName: "trophy.fill")
+                                                            .font(.system(size: 11, weight: .bold))
+                                                            .foregroundStyle(RepSyncTheme.primaryGreen)
+                                                            .frame(width: 12)
+                                                    } else {
+                                                        Color.clear.frame(width: 12, height: 12)
+                                                    }
+                                                    Spacer()
+                                                    Text(set.summary)
+                                                        .font(.system(size: 15, weight: .semibold))
+                                                        .foregroundStyle(RepSyncTheme.textPrimary)
+                                                }
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 3)
+                                            }
                                         }
                                     }
                                     .buttonStyle(.plain)
                                 }
 
                                 HStack(spacing: 8) {
-                                    actionPill("Copy", fill: RepSyncTheme.cardElevated) { appModel.copyCompletedWorkoutToTemplate(id: workout.id) }
-                                    actionPill("Template", fill: RepSyncTheme.cardElevated) {
+                                    actionPill("Template", fill: RepSyncTheme.primaryGreen) {
                                         templateSourceWorkoutID = workout.id
                                         templateName = workout.title
                                     }
-                                    actionPill("Remove", fill: RepSyncTheme.destructive) { appModel.deleteCompletedWorkout(id: workout.id) }
+                                    actionPill("Edit", fill: RepSyncTheme.cardElevated) {
+                                        editingWorkoutDateID = workout.id
+                                        editedWorkoutDate = appModel.dayViewState.selectedDate
+                                    }
+                                    actionPill("Remove", fill: RepSyncTheme.destructive) { workoutToRemoveID = workout.id }
                                 }
                             }
                         }
@@ -105,6 +132,68 @@ struct DayViewScreen: View {
             }
         } message: {
             Text("Name this workout before saving it to your templates.")
+        }
+        .sheet(isPresented: Binding(
+            get: { editingWorkoutDateID != nil },
+            set: { if !$0 { editingWorkoutDateID = nil } }
+        )) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Edit Workout Date")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+
+                DatePicker("Performed On", selection: $editedWorkoutDate, displayedComponents: .date)
+                    .tint(RepSyncTheme.primaryGreen)
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+
+                HStack(spacing: 12) {
+                    Button("Cancel") {
+                        editingWorkoutDateID = nil
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(RepSyncTheme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
+
+                    Button("Save") {
+                        if let editingWorkoutDateID {
+                            appModel.updateCompletedWorkoutDate(id: editingWorkoutDateID, on: editedWorkoutDate)
+                        }
+                        editingWorkoutDateID = nil
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(RepSyncTheme.primaryGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .buttonStyle(.plain)
+                }
+
+                Spacer()
+            }
+            .padding(24)
+            .background(RepSyncTheme.background)
+            .presentationDetents([.medium])
+        }
+        .alert("Remove Workout?", isPresented: Binding(
+            get: { workoutToRemoveID != nil },
+            set: { if !$0 { workoutToRemoveID = nil } }
+        )) {
+            Button("Cancel", role: .cancel) {
+                workoutToRemoveID = nil
+            }
+            Button("Remove", role: .destructive) {
+                if let workoutToRemoveID {
+                    appModel.deleteCompletedWorkout(id: workoutToRemoveID)
+                }
+                workoutToRemoveID = nil
+            }
+        } message: {
+            Text("This completed workout will be removed permanently and cannot be undone.")
         }
     }
 

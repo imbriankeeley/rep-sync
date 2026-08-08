@@ -12,6 +12,8 @@ struct RepSyncRootView: View {
                     switch appModel.selectedTab {
                     case .home:
                         HomeScreen()
+                    case .leaderboard:
+                        LeaderboardScreen()
                     case .profile:
                         ProfileScreen()
                     }

@@ -2,11 +2,22 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>RepSync uses the camera so you can attach progress photos to bodyweight logs.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.imbriankeeley.RepSync.spotify</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>repsync-spotify</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>spotify</string>
 	</array>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>RepSync uses Apple Music so you can control workout audio from inside the app.</string>
 </dict>
 </plist>
