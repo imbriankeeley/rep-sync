@@ -6,6 +6,7 @@ import SwiftUI
 import MusicKit
 import MediaPlayer
 import AudioToolbox
+import AVFoundation
 #if canImport(SpotifyiOS)
 import SpotifyiOS
 #endif
@@ -25,6 +26,11 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     @Published var historyState = ExerciseHistoryScreenState()
     @Published var profileState = ProfileScreenState()
     @Published var leaderboardState = LeaderboardScreenState()
+    @Published var leaderboardUsername = ""
+    @Published var leaderboardFriends: [String] = []
+    @Published var incomingFriendRequests: [String] = []
+    @Published var sentFriendRequests: [String] = []
+    @Published var levelUpEvent: LevelUpEvent?
     @Published var trackedLeaderboardLifts: Set<CanonicalLift> = Set(CanonicalLift.defaultTrackedLifts)
     @Published var bodyweightEntriesState = BodyweightEntriesScreenState()
     @Published var workoutEditorState = WorkoutEditorScreenState()
@@ -41,7 +47,6 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     @Published var profileDraftBirthdate = Calendar.repsync.date(byAdding: .year, value: -18, to: Date()) ?? Date()
     @Published var profileDraftHasBirthdate = false
     @Published var profileDraftSex: BiologicalSex = .male
-    @Published var profileDraftTrainingAge: TrainingAge = .beginner
     @Published var selectedMusicProvider: MusicProvider?
     @Published var hasDismissedMusicPrompt = false
     @Published var showsMusicProviderPicker = false
@@ -86,6 +91,7 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     private var restTimerCancellable: AnyCancellable?
     private var restTimerEndsAt: Date?
     private var musicCancellables: Set<AnyCancellable> = []
+    private var levelUpAudioPlayer: AVAudioPlayer?
     private var monthCursor = Calendar.repsync.startOfDay(for: Date())
     private var selectedTemplateID: UUID?
     private var selectedExerciseName = ""
@@ -117,6 +123,8 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         super.init()
         configureMusicObservers()
         loadBodyweightChartRangePreference()
+        loadLeaderboardUsernamePreference()
+        loadLeaderboardSocialPreferences()
         loadLeaderboardTrackedLiftsPreference()
         loadMusicPreferences()
         loadRestTimerPreference()
@@ -292,6 +300,11 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         navigationPath.append(.exerciseHistory)
     }
 
+    func showRankedMovements() {
+        refreshAll()
+        navigationPath.append(.rankedMovements)
+    }
+
     func showBodyweightEntries() {
         refreshAll()
         navigationPath.append(.bodyweightEntries)
@@ -311,7 +324,6 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         profileDraftBirthdate = profileState.birthdate ?? (Calendar.repsync.date(byAdding: .year, value: -18, to: Date()) ?? Date())
         profileDraftHasBirthdate = profileState.birthdate != nil
         profileDraftSex = profileState.sex
-        profileDraftTrainingAge = profileState.trainingAge
         navigationPath.append(.editProfile)
     }
 
@@ -401,9 +413,14 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     func finishActiveWorkout() {
         guard let activeWorkoutState else { return }
         do {
+            let previousLevel = try store.makeLeaderboardState().xpProgress.level
             try store.saveCompletedWorkout(from: activeWorkoutState)
             closeActiveWorkout(popNavigation: true)
             refreshAll()
+            let newProgress = leaderboardState.xpProgress
+            if newProgress.level > previousLevel {
+                showLevelUp(previousLevel: previousLevel, newLevel: newProgress.level, iconName: newProgress.iconName)
+            }
         } catch {
             print("Failed to finish workout: \(error)")
         }
@@ -434,9 +451,8 @@ final class RepSyncAppModel: NSObject, ObservableObject {
 
     func resumeActiveWorkout() {
         guard activeWorkoutState != nil else { return }
-        if navigationPath.last != .activeWorkout {
-            navigationPath.append(.activeWorkout)
-        }
+        navigationPath.removeAll()
+        navigationPath.append(.activeWorkout)
         activeWorkoutBanner = nil
     }
 
@@ -466,8 +482,7 @@ final class RepSyncAppModel: NSObject, ObservableObject {
             try store.setBiometricPreferences(
                 height: formattedHeightPreference(feet: profileDraftHeightFeet, inches: profileDraftHeightInches),
                 birthdate: profileDraftHasBirthdate ? profileDraftBirthdate : nil,
-                sex: profileDraftSex,
-                trainingAge: profileDraftTrainingAge
+                sex: profileDraftSex
             )
             scheduleWorkoutRemindersIfNeeded()
             refreshAll()
@@ -532,7 +547,10 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     func showAddBodyweightSheet() {
         newBodyweightValue = ""
         newBodyweightPhotoPath = nil
-        showsAddBodyweightSheet = true
+        showsAddBodyweightSheet = false
+        Task { @MainActor [weak self] in
+            self?.showsAddBodyweightSheet = true
+        }
     }
 
     func dismissAddBodyweightSheet() {
@@ -681,6 +699,11 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         refreshAll()
     }
 
+    func selectMonth(containing date: Date) {
+        monthCursor = Calendar.repsync.date(from: Calendar.repsync.dateComponents([.year, .month], from: date)) ?? Calendar.repsync.startOfDay(for: date)
+        refreshAll()
+    }
+
     func addExerciseToEditor() {
         workoutEditorState.exercises.append(WorkoutExerciseDraft())
     }
@@ -692,6 +715,12 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     func moveEditorExercise(id: UUID, to index: Int) {
         var state = workoutEditorState
         moveItem(id: id, to: index, in: &state.exercises)
+        workoutEditorState = state
+    }
+
+    func moveEditorExercises(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var state = workoutEditorState
+        state.exercises.move(fromOffsets: source, toOffset: destination)
         workoutEditorState = state
     }
 
@@ -709,6 +738,13 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         guard var state = activeWorkoutState else { return }
         moveItem(id: id, to: index, in: &state.exercises)
         activeWorkoutState = state
+    }
+
+    func moveActiveExercises(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard var state = activeWorkoutState else { return }
+        state.exercises.move(fromOffsets: source, toOffset: destination)
+        activeWorkoutState = state
+        activeWorkoutDidChange()
     }
 
     func commitActiveExerciseOrder() {
@@ -767,6 +803,13 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         var state = workoutsState
         moveItem(id: id, to: index, in: &state.workouts)
         workoutsState = state
+    }
+
+    func moveWorkouts(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var state = workoutsState
+        state.workouts.move(fromOffsets: source, toOffset: destination)
+        workoutsState = state
+        commitWorkoutOrder()
     }
 
     func commitWorkoutOrder() {
@@ -1053,6 +1096,76 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         }
     }
 
+    func saveLeaderboardUsername(_ username: String) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        leaderboardUsername = trimmed
+        do {
+            try store.setStringPreference(trimmed, for: leaderboardUsernameKey)
+        } catch {
+            print("Failed to save leaderboard username: \(error)")
+        }
+    }
+
+    func sendLeaderboardFriendRequest(to username: String) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard trimmed.caseInsensitiveCompare(leaderboardDisplayNameForSocial) != .orderedSame else { return }
+        guard !leaderboardFriends.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
+        guard !sentFriendRequests.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return }
+
+        sentFriendRequests.append(trimmed)
+        persistLeaderboardSocialPreferences()
+    }
+
+    func acceptLeaderboardFriendRequest(from username: String) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        incomingFriendRequests.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        if !leaderboardFriends.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            leaderboardFriends.append(trimmed)
+        }
+        persistLeaderboardSocialPreferences()
+    }
+
+    func declineLeaderboardFriendRequest(from username: String) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        incomingFriendRequests.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        persistLeaderboardSocialPreferences()
+    }
+
+    private var leaderboardDisplayNameForSocial: String {
+        let trimmed = leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "You" : trimmed
+    }
+
+    func dismissLevelUp() {
+        levelUpEvent = nil
+    }
+
+    func viewLeaderboardFromLevelUp() {
+        levelUpEvent = nil
+        navigationPath.removeAll()
+        selectedTab = .leaderboard
+    }
+
+    func testLevelUpPopup() {
+        let currentLevel = leaderboardState.xpProgress.level
+        let newLevel = min(100, currentLevel + Int.random(in: 1...4))
+        let previousLevel = max(1, min(currentLevel, newLevel - 1))
+        showLevelUp(
+            previousLevel: previousLevel,
+            newLevel: newLevel,
+            iconName: levelUpIconName(for: newLevel)
+        )
+    }
+
+    func previewLevelUpSound(option: Int) {
+        playLevelUpCelebration(option: option, includesHaptics: false)
+    }
+
     func dismissMusicPrompt() {
         hasDismissedMusicPrompt = true
         do {
@@ -1235,7 +1348,22 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         workoutEditorState.musicProvider = selectedMusicProvider
     }
 
+    func disconnectWorkoutEditorAudio() {
+        workoutEditorState.musicProvider = nil
+        workoutEditorState.musicPlaylistID = nil
+        workoutEditorState.musicPlaylistName = nil
+        workoutEditorState.musicPlaylistURL = nil
+    }
+
     func setWorkoutEditorSpotifyURL(_ urlString: String) {
+        guard normalizedString(urlString) != nil else {
+            workoutEditorState.musicProvider = nil
+            workoutEditorState.musicPlaylistID = nil
+            workoutEditorState.musicPlaylistName = nil
+            workoutEditorState.musicPlaylistURL = nil
+            return
+        }
+
         workoutEditorState.musicProvider = .spotify
         workoutEditorState.musicPlaylistURL = urlString
         workoutEditorState.musicPlaylistID = nil
@@ -1731,6 +1859,54 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         }
     }
 
+    private func loadLeaderboardUsernamePreference() {
+        do {
+            leaderboardUsername = try store.stringPreference(for: leaderboardUsernameKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        } catch {
+            print("Failed to load leaderboard username: \(error)")
+        }
+    }
+
+    private func loadLeaderboardSocialPreferences() {
+        do {
+            leaderboardFriends = try stringListPreference(for: leaderboardFriendsKey, defaultValue: ["maya", "andre"])
+            incomingFriendRequests = try stringListPreference(for: leaderboardIncomingFriendRequestsKey, defaultValue: ["sam"])
+            sentFriendRequests = try stringListPreference(for: leaderboardSentFriendRequestsKey, defaultValue: [])
+        } catch {
+            print("Failed to load leaderboard social preferences: \(error)")
+            leaderboardFriends = ["maya", "andre"]
+            incomingFriendRequests = ["sam"]
+            sentFriendRequests = []
+        }
+    }
+
+    private func persistLeaderboardSocialPreferences() {
+        do {
+            try store.setStringPreference(encodedStringList(leaderboardFriends), for: leaderboardFriendsKey)
+            try store.setStringPreference(encodedStringList(incomingFriendRequests), for: leaderboardIncomingFriendRequestsKey)
+            try store.setStringPreference(encodedStringList(sentFriendRequests), for: leaderboardSentFriendRequestsKey)
+        } catch {
+            print("Failed to save leaderboard social preferences: \(error)")
+        }
+    }
+
+    private func stringListPreference(for key: String, defaultValue: [String]) throws -> [String] {
+        guard let storedValue = try store.stringPreference(for: key) else {
+            return defaultValue
+        }
+        return storedValue
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func encodedStringList(_ values: [String]) -> String {
+        values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
     private func configureMusicObservers() {
         let player = MPMusicPlayerController.systemMusicPlayer
         player.beginGeneratingPlaybackNotifications()
@@ -1911,6 +2087,113 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         feedback.notificationOccurred(.success)
         AudioServicesPlaySystemSound(1005)
         AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+    }
+
+    private func showLevelUp(previousLevel: Int, newLevel: Int, iconName: String) {
+        levelUpEvent = LevelUpEvent(previousLevel: previousLevel, newLevel: newLevel, iconName: iconName)
+        playLevelUpCelebration()
+    }
+
+    private func playLevelUpCelebration(option: Int = 1, includesHaptics: Bool = true) {
+        if includesHaptics {
+            let feedback = UINotificationFeedbackGenerator()
+            feedback.notificationOccurred(.success)
+
+            let impact = UIImpactFeedbackGenerator(style: .medium)
+            impact.impactOccurred(intensity: 0.8)
+        }
+
+        playGeneratedLevelUpSound(option: option)
+    }
+
+    private func playGeneratedLevelUpSound(option: Int) {
+        let notes: [(frequency: Double, duration: Double)]
+        switch option {
+        case 1:
+            notes = [(523.25, 0.09), (659.25, 0.09), (783.99, 0.11), (1046.50, 0.18)]
+        case 2:
+            notes = [(587.33, 0.07), (880.00, 0.07), (1174.66, 0.09), (1567.98, 0.16)]
+        case 3:
+            notes = [(392.00, 0.08), (523.25, 0.08), (659.25, 0.09), (1046.50, 0.11), (1318.51, 0.16)]
+        case 4:
+            notes = [(329.63, 0.08), (415.30, 0.08), (493.88, 0.09), (659.25, 0.10), (987.77, 0.18)]
+        default:
+            notes = [(987.77, 0.08), (1318.51, 0.08), (1760.00, 0.18)]
+        }
+
+        do {
+            let data = makeChiptuneWAVData(notes: notes)
+            levelUpAudioPlayer = try AVAudioPlayer(data: data)
+            levelUpAudioPlayer?.volume = 0.72
+            levelUpAudioPlayer?.prepareToPlay()
+            levelUpAudioPlayer?.play()
+        } catch {
+            AudioServicesPlaySystemSound(1025)
+        }
+    }
+
+    private func makeChiptuneWAVData(notes: [(frequency: Double, duration: Double)]) -> Data {
+        let sampleRate = 44_100
+        var samples: [Int16] = []
+        let amplitude = Double(Int16.max) * 0.28
+
+        for note in notes {
+            let count = max(1, Int(note.duration * Double(sampleRate)))
+            for sampleIndex in 0..<count {
+                let t = Double(sampleIndex) / Double(sampleRate)
+                let phase = sin(2.0 * .pi * note.frequency * t)
+                let wave = phase >= 0 ? 1.0 : -1.0
+                let attack = min(1.0, Double(sampleIndex) / Double(max(1, count / 10)))
+                let release = min(1.0, Double(count - sampleIndex) / Double(max(1, count / 5)))
+                let envelope = min(attack, release)
+                samples.append(Int16(wave * amplitude * envelope))
+            }
+
+            samples.append(contentsOf: Array(repeating: 0, count: Int(0.018 * Double(sampleRate))))
+        }
+
+        let dataSize = samples.count * MemoryLayout<Int16>.size
+        var data = Data()
+        data.append("RIFF".data(using: .ascii)!)
+        appendLittleEndian(UInt32(36 + dataSize), to: &data)
+        data.append("WAVEfmt ".data(using: .ascii)!)
+        appendLittleEndian(UInt32(16), to: &data)
+        appendLittleEndian(UInt16(1), to: &data)
+        appendLittleEndian(UInt16(1), to: &data)
+        appendLittleEndian(UInt32(sampleRate), to: &data)
+        appendLittleEndian(UInt32(sampleRate * MemoryLayout<Int16>.size), to: &data)
+        appendLittleEndian(UInt16(MemoryLayout<Int16>.size), to: &data)
+        appendLittleEndian(UInt16(16), to: &data)
+        data.append("data".data(using: .ascii)!)
+        appendLittleEndian(UInt32(dataSize), to: &data)
+
+        for sample in samples {
+            appendLittleEndian(UInt16(bitPattern: sample), to: &data)
+        }
+
+        return data
+    }
+
+    private func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndianValue = value.littleEndian
+        withUnsafeBytes(of: &littleEndianValue) { bytes in
+            data.append(contentsOf: bytes)
+        }
+    }
+
+    private func levelUpIconName(for level: Int) -> String {
+        switch level {
+        case 90...100: return "trophy.fill"
+        case 80..<90: return "crown.fill"
+        case 70..<80: return "star.circle.fill"
+        case 60..<70: return "shield.fill"
+        case 50..<60: return "bolt.shield.fill"
+        case 40..<50: return "flame.fill"
+        case 30..<40: return "medal.fill"
+        case 20..<30: return "bolt.fill"
+        case 10..<20: return "dumbbell.fill"
+        default: return "figure.walk"
+        }
     }
 
     private func scheduleRestTimerNotification(seconds: Int) {
@@ -2099,6 +2382,10 @@ final class RepSyncAppModel: NSObject, ObservableObject {
     private let musicProviderKey = "music_provider"
     private let musicPromptDismissedKey = "music_prompt_dismissed"
     private let bodyweightChartRangeKey = "bodyweight_chart_range"
+    private let leaderboardUsernameKey = "leaderboard_username"
+    private let leaderboardFriendsKey = "leaderboard_friends"
+    private let leaderboardIncomingFriendRequestsKey = "leaderboard_incoming_friend_requests"
+    private let leaderboardSentFriendRequestsKey = "leaderboard_sent_friend_requests"
     private let restTimerDurationKey = "rest_timer_duration_seconds"
     private let activeWorkoutStateKey = "active_workout_state_json"
     private let restTimerEndsAtKey = "rest_timer_ends_at"

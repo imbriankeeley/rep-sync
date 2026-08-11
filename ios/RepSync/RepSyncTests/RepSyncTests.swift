@@ -88,7 +88,7 @@ final class RepSyncTests: XCTestCase {
         let state = try store.makeProfileState()
 
         XCTAssertEqual(state.bodyweightTrendingWeightText, "180.5 lbs")
-        XCTAssertEqual(state.bodyweightTenDayLowText, "179 lbs on Apr 14, 2026")
+        XCTAssertEqual(state.bodyweightTenDayLowText, "179.0 lbs on Apr 14, 2026")
     }
 
     @MainActor
@@ -147,8 +147,7 @@ final class RepSyncTests: XCTestCase {
         try store.setBiometricPreferences(
             height: "72.5",
             birthdate: testDate(year: 1992, month: 4, day: 17),
-            sex: .female,
-            trainingAge: .intermediate
+            sex: .female
         )
         try store.addBodyweightEntry(weight: 184.5, on: testDate(year: 2026, month: 4, day: 17))
 
@@ -158,7 +157,6 @@ final class RepSyncTests: XCTestCase {
         XCTAssertEqual(state.age, "34")
         XCTAssertEqual(state.birthdate, testDate(year: 1992, month: 4, day: 17))
         XCTAssertEqual(state.sex, .female)
-        XCTAssertEqual(state.trainingAge, .intermediate)
         XCTAssertEqual(state.latestWeight, "184.5 lbs")
     }
 
@@ -168,8 +166,7 @@ final class RepSyncTests: XCTestCase {
         try store.setBiometricPreferences(
             height: "70",
             birthdate: testDate(year: 2000, month: 4, day: 17),
-            sex: .male,
-            trainingAge: .intermediate
+            sex: .male
         )
         try store.addBodyweightEntry(weight: 180, on: testDate(year: 2026, month: 4, day: 17))
         try store.saveCompletedWorkout(from: ActiveWorkoutScreenState(
@@ -199,7 +196,7 @@ final class RepSyncTests: XCTestCase {
         ))
 
         let state = try store.makeLeaderboardState(currentDate: testDate(year: 2026, month: 4, day: 17))
-        let bench = try XCTUnwrap(state.rows.first { $0.lift == .benchPress })
+        let bench = try XCTUnwrap(state.rows.first { $0.category == .horizontalPress })
 
         XCTAssertEqual(bench.rank, .intermediate)
         XCTAssertEqual(bench.bestSetText, "185 x 5")
@@ -207,14 +204,12 @@ final class RepSyncTests: XCTestCase {
     }
 
     @MainActor
-    func testLeaderboardOnlyShowsTrackedLifts() throws {
+    func testLeaderboardBuildsMovementCategoryRows() throws {
         let store = RepSyncStore(context: PersistenceController(inMemory: true).container.viewContext)
-
-        try store.setLeaderboardTrackedLifts([.benchPress, .romanianDeadlift])
 
         let state = try store.makeLeaderboardState(currentDate: testDate(year: 2026, month: 4, day: 17))
 
-        XCTAssertEqual(state.rows.map(\.lift), [.benchPress, .romanianDeadlift])
+        XCTAssertEqual(state.rows.map(\.category), StrengthMovementCategory.allCases)
     }
 
     @MainActor
@@ -226,6 +221,27 @@ final class RepSyncTests: XCTestCase {
         let state = try store.makeBodyweightEntriesState()
 
         XCTAssertEqual(state.entries.first?.photoPath, "photo.jpg")
+    }
+
+    @MainActor
+    func testBodyweightEntriesShowFluctuationFromPreviousEntry() throws {
+        let store = RepSyncStore(context: PersistenceController(inMemory: true).container.viewContext)
+
+        try store.addBodyweightEntry(weight: 144.8, on: testDate(year: 2026, month: 4, day: 17))
+        try store.addBodyweightEntry(weight: 144.6, on: testDate(year: 2026, month: 4, day: 18))
+        try store.addBodyweightEntry(weight: 144.1, on: testDate(year: 2026, month: 4, day: 19))
+        try store.addBodyweightEntry(weight: 145.1, on: testDate(year: 2026, month: 4, day: 20))
+
+        let state = try store.makeBodyweightEntriesState()
+
+        XCTAssertEqual(state.entries[0].fluctuationText, "1.0")
+        XCTAssertEqual(state.entries[0].fluctuationDirection, .up)
+        XCTAssertEqual(state.entries[1].fluctuationText, "0.5")
+        XCTAssertEqual(state.entries[1].fluctuationDirection, .down)
+        XCTAssertEqual(state.entries[2].fluctuationText, "0.2")
+        XCTAssertEqual(state.entries[2].fluctuationDirection, .down)
+        XCTAssertEqual(state.entries[3].fluctuationText, "0.0")
+        XCTAssertEqual(state.entries[3].fluctuationDirection, .flat)
     }
 
     @MainActor

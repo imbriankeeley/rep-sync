@@ -34,6 +34,7 @@ enum RepSyncRoute: Hashable {
     case exerciseHistory
     case bodyweightEntries
     case editProfile
+    case rankedMovements
 }
 
 enum ExerciseTrackingKind: String, CaseIterable, Identifiable, Codable {
@@ -86,14 +87,6 @@ enum WorkoutWeekday: Int, CaseIterable, Identifiable, Hashable {
         case .saturday: return "Saturday"
         }
     }
-}
-
-enum TrainingAge: String, CaseIterable, Identifiable {
-    case beginner = "Beginner"
-    case intermediate = "Intermediate"
-    case advanced = "Advanced"
-
-    var id: String { rawValue }
 }
 
 enum BiologicalSex: String, CaseIterable, Identifiable {
@@ -311,30 +304,55 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
     case cableKickback
     case hipThrust
     case legExtension
+    case legPress
     case legCurl
     case calfRaise
     case legRaise
-    case abductor
-    case adductor
     case chestPress
     case chestFly
     case lateralRaise
     case romanianDeadlift
     case backExtension
-    case dip
-    case shrug
 
     var id: String { rawValue }
 
     static var defaultTrackedLifts: [CanonicalLift] { allCases }
 
     var leaderboardSection: LeaderboardLiftSection {
+        movementCategory.leaderboardSection
+    }
+
+    var movementCategory: StrengthMovementCategory {
         switch self {
-        case .squat, .deadlift, .hackSquat, .cableKickback, .hipThrust, .legExtension, .legCurl, .calfRaise, .abductor, .adductor, .romanianDeadlift:
-            return .lowerBody
-        case .benchPress, .overheadPress, .barbellRow, .barbellCurl, .dumbbellCurl, .tricepExtension, .seatedCableRow, .latPulldown, .latPushdown, .legRaise, .chestPress, .chestFly, .lateralRaise, .backExtension, .dip, .shrug:
-            return .upperBody
+        case .benchPress, .chestPress, .chestFly:
+            return .horizontalPress
+        case .barbellRow, .seatedCableRow:
+            return .horizontalPull
+        case .overheadPress, .lateralRaise:
+            return .verticalPress
+        case .latPulldown, .latPushdown:
+            return .verticalPull
+        case .squat, .hackSquat:
+            return .squat
+        case .deadlift, .romanianDeadlift:
+            return .hinge
+        case .hipThrust, .cableKickback, .backExtension:
+            return .hipExtension
+        case .legExtension, .legPress:
+            return .kneeExtension
+        case .legCurl:
+            return .kneeFlexion
+        case .barbellCurl, .dumbbellCurl:
+            return .armFlexion
+        case .tricepExtension:
+            return .armExtension
+        case .calfRaise, .legRaise:
+            return .calvesCore
         }
+    }
+
+    static var defaultSuggestions: [ExerciseSuggestion] {
+        allCases.map { ExerciseSuggestion(name: $0.displayName, trackingType: .weightReps) }
     }
 
     var displayName: String {
@@ -357,15 +375,12 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
         case .legCurl: return "Leg Curl"
         case .calfRaise: return "Calf Raise"
         case .legRaise: return "Leg Raise"
-        case .abductor: return "Abductor"
-        case .adductor: return "Adductor"
         case .chestPress: return "Chest Press"
         case .chestFly: return "Chest Fly"
         case .lateralRaise: return "Lateral Raise"
         case .romanianDeadlift: return "Romanian Deadlift"
         case .backExtension: return "Back Extension"
-        case .dip: return "Dip"
-        case .shrug: return "Shrug"
+        case .legPress: return "Leg Press"
         }
     }
 
@@ -401,16 +416,14 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
             return ["hip thrust", "hip thrusts", "barbell hip thrust", "barbell hip thrusts", "glute bridge", "glute bridges"]
         case .legExtension:
             return ["leg extension", "leg extensions"]
+        case .legPress:
+            return ["leg press", "leg presses", "machine leg press", "plate loaded leg press", "45 degree leg press"]
         case .legCurl:
             return ["leg curl", "leg curls", "seated leg curl", "seated leg curls", "lying leg curl", "lying leg curls", "hamstring curl", "hamstring curls"]
         case .calfRaise:
             return ["calf raise", "calf raises", "calve raise", "calve raises", "standing calf raise", "standing calf raises", "seated calf raise", "seated calf raises"]
         case .legRaise:
             return ["leg raise", "leg raises", "hanging leg raise", "hanging leg raises", "captain chair leg raise", "captain chair leg raises"]
-        case .abductor:
-            return ["abductor", "abductors", "hip abductor", "hip abductors", "abductor machine"]
-        case .adductor:
-            return ["adductor", "adductors", "hip adductor", "hip adductors", "adductor machine"]
         case .chestPress:
             return ["chest press", "machine chest press", "plate loaded chest press", "seated chest press"]
         case .chestFly:
@@ -421,10 +434,6 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
             return ["romanian deadlift", "romanian deadlifts", "romandian deadlift", "romandian deadlifts", "rdl", "rdls", "rdl s", "barbell rdl", "barbell rdls"]
         case .backExtension:
             return ["back extension", "back extensions", "hyperextension", "hyperextensions", "weighted back extension", "weighted back extensions"]
-        case .dip:
-            return ["dip", "dips", "weighted dip", "weighted dips", "chest dip", "chest dips", "tricep dip", "tricep dips"]
-        case .shrug:
-            return ["shrug", "shrugs", "barbell shrug", "barbell shrugs", "bb shrug", "bb shrugs", "dumbbell shrug", "dumbbell shrugs"]
         }
     }
 
@@ -440,7 +449,7 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
             return ["dumbbell press", "db press", "bench press", "incline press", "push press", "machine shoulder press", "seated press"]
         case .barbellRow:
             return ["dumbbell row", "db row", "cable row", "machine row", "t bar row", "seal row"]
-        case .hackSquat, .barbellCurl, .dumbbellCurl, .tricepExtension, .seatedCableRow, .latPulldown, .latPushdown, .cableKickback, .hipThrust, .legExtension, .legCurl, .calfRaise, .legRaise, .abductor, .adductor, .chestPress, .chestFly, .lateralRaise, .romanianDeadlift, .backExtension, .dip, .shrug:
+        case .hackSquat, .barbellCurl, .dumbbellCurl, .tricepExtension, .seatedCableRow, .latPulldown, .latPushdown, .cableKickback, .hipThrust, .legExtension, .legPress, .legCurl, .calfRaise, .legRaise, .chestPress, .chestFly, .lateralRaise, .romanianDeadlift, .backExtension:
             return []
         }
     }
@@ -465,8 +474,62 @@ enum CanonicalLift: String, CaseIterable, Identifiable, Hashable {
 enum LeaderboardLiftSection: String, CaseIterable, Identifiable {
     case upperBody = "Upper Body"
     case lowerBody = "Lower Body"
+    case accessories = "Accessories"
 
     var id: String { rawValue }
+}
+
+enum StrengthMovementCategory: String, CaseIterable, Identifiable, Hashable {
+    case horizontalPress
+    case horizontalPull
+    case verticalPress
+    case verticalPull
+    case squat
+    case hinge
+    case hipExtension
+    case kneeExtension
+    case kneeFlexion
+    case armFlexion
+    case armExtension
+    case calvesCore
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .horizontalPress: return "Horizontal Press"
+        case .horizontalPull: return "Horizontal Pull"
+        case .verticalPress: return "Vertical Press"
+        case .verticalPull: return "Vertical Pull"
+        case .squat: return "Squat Pattern"
+        case .hinge: return "Hinge"
+        case .hipExtension: return "Hip Extension"
+        case .kneeExtension: return "Knee Extension"
+        case .kneeFlexion: return "Knee Flexion"
+        case .armFlexion: return "Arm Flexion"
+        case .armExtension: return "Arm Extension"
+        case .calvesCore: return "Calves / Core"
+        }
+    }
+
+    var leaderboardSection: LeaderboardLiftSection {
+        switch self {
+        case .horizontalPress, .horizontalPull, .verticalPress, .verticalPull:
+            return .upperBody
+        case .squat, .hinge, .hipExtension, .kneeExtension, .kneeFlexion:
+            return .lowerBody
+        case .armFlexion, .armExtension, .calvesCore:
+            return .accessories
+        }
+    }
+
+    var contributingLifts: [CanonicalLift] {
+        CanonicalLift.allCases.filter { $0.movementCategory == self }
+    }
+
+    var contributingExerciseText: String {
+        contributingLifts.map(\.displayName).joined(separator: ", ")
+    }
 }
 
 enum StrengthRankLevel: String, CaseIterable, Identifiable {
@@ -492,13 +555,35 @@ enum StrengthRankLevel: String, CaseIterable, Identifiable {
 }
 
 struct LeaderboardLiftRow: Identifiable {
-    let id: CanonicalLift
-    let lift: CanonicalLift
+    let id: StrengthMovementCategory
+    let category: StrengthMovementCategory
     let rank: StrengthRankLevel
     let bestSetText: String
     let estimatedOneRepMaxText: String
     let nextRankText: String?
     let sourceExerciseName: String?
+    let contributingExercisesText: String
+}
+
+struct LeaderboardXPProgress {
+    var level = 1
+    var totalXP = 0
+    var currentLevelXP = 0
+    var nextLevelXP = 100
+    var progress = 0.0
+    var title = "Level 1"
+    var iconName = "figure.walk"
+
+    var xpSummary: String {
+        "\(currentLevelXP) / \(nextLevelXP) XP"
+    }
+}
+
+struct LevelUpEvent: Identifiable, Equatable {
+    let id = UUID()
+    let previousLevel: Int
+    let newLevel: Int
+    let iconName: String
 }
 
 struct LeaderboardScreenState {
@@ -506,15 +591,17 @@ struct LeaderboardScreenState {
     var bodyweightClass = "-"
     var overallRank = StrengthRankLevel.unranked
     var overallScoreText = "-"
-    var rows: [LeaderboardLiftRow] = CanonicalLift.allCases.map {
+    var xpProgress = LeaderboardXPProgress()
+    var rows: [LeaderboardLiftRow] = StrengthMovementCategory.allCases.map {
         LeaderboardLiftRow(
             id: $0,
-            lift: $0,
+            category: $0,
             rank: .unranked,
             bestSetText: "No matched lift",
             estimatedOneRepMaxText: "-",
             nextRankText: nil,
-            sourceExerciseName: nil
+            sourceExerciseName: nil,
+            contributingExercisesText: $0.contributingExerciseText
         )
     }
 }
@@ -524,8 +611,16 @@ struct BodyweightEntryModel: Identifiable {
     let date: Date
     let dateText: String
     let weightText: String
+    let fluctuationText: String?
+    let fluctuationDirection: BodyweightFluctuationDirection?
     let value: Double
     let photoPath: String?
+}
+
+enum BodyweightFluctuationDirection: Equatable {
+    case up
+    case down
+    case flat
 }
 
 struct ExerciseSuggestion: Identifiable, Hashable {
@@ -562,7 +657,6 @@ struct ProfileScreenState {
     var age = ""
     var birthdate: Date?
     var sex: BiologicalSex = .male
-    var trainingAge: TrainingAge = .beginner
     var latestWeight = "-"
     var bodyweightTrendText: String?
     var bodyweightTrendIsStable = false
@@ -638,6 +732,10 @@ func formatWeight(_ value: Double) -> String {
         return String(Int(value))
     }
     return String(format: "%.1f", value)
+}
+
+func formatBodyweight(_ value: Double) -> String {
+    String(format: "%.1f", value)
 }
 
 func normalizedExerciseName(_ value: String) -> String {

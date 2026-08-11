@@ -274,6 +274,9 @@ final class RepSyncStore {
         guard !trimmed.isEmpty else { return [] }
 
         var suggestionsByName: [String: ExerciseSuggestion] = [:]
+        for suggestion in CanonicalLift.defaultSuggestions where suggestion.name.localizedCaseInsensitiveContains(trimmed) {
+            suggestionsByName[exerciseNameMatchKey(suggestion.name)] = suggestion
+        }
 
         let templateRequest: NSFetchRequest<TemplateExercise> = TemplateExercise.fetchRequest()
         templateRequest.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
@@ -393,11 +396,10 @@ final class RepSyncStore {
         try save()
     }
 
-    func setBiometricPreferences(height: String, birthdate: Date?, sex: BiologicalSex, trainingAge: TrainingAge) throws {
+    func setBiometricPreferences(height: String, birthdate: Date?, sex: BiologicalSex) throws {
         try setStringPreference(height.trimmingCharacters(in: .whitespacesAndNewlines), for: profileHeightKey)
         try setStringPreference(birthdate.map(DateFormatter.repsyncISODate.string(from:)) ?? "", for: profileBirthdateKey)
         try setStringPreference(sex.rawValue, for: profileSexKey)
-        try setStringPreference(trainingAge.rawValue, for: profileTrainingAgeKey)
     }
 
     func leaderboardTrackedLifts() throws -> Set<CanonicalLift> {
@@ -513,7 +515,6 @@ final class RepSyncStore {
             age: formattedProfileAge(from: try profileBirthdate(), currentDate: currentDate),
             birthdate: try profileBirthdate(),
             sex: try stringPreference(for: profileSexKey).flatMap(BiologicalSex.init(rawValue:)) ?? .male,
-            trainingAge: try stringPreference(for: profileTrainingAgeKey).flatMap(TrainingAge.init(rawValue:)) ?? .beginner,
             latestWeight: latest,
             bodyweightTrendText: trendSummary?.text,
             bodyweightTrendIsStable: trendSummary?.isStable ?? false,
@@ -541,17 +542,16 @@ final class RepSyncStore {
         let entries = try fetchBodyweightEntryModels()
         let bodyweight = entries.first?.value
         let sex = try stringPreference(for: profileSexKey).flatMap(BiologicalSex.init(rawValue:)) ?? .male
-        let trainingAge = try stringPreference(for: profileTrainingAgeKey).flatMap(TrainingAge.init(rawValue:)) ?? .beginner
         let birthdate = try profileBirthdate()
         let age = birthdate.flatMap { Calendar.repsync.dateComponents([.year], from: $0, to: currentDate).year }
         let height = formattedProfileHeight(try stringPreference(for: profileHeightKey))
         let performances = try bestCanonicalLiftPerformances()
-        let trackedLifts = try leaderboardTrackedLifts()
+        let completedWorkouts = try fetchCompletedWorkouts()
 
-        let rows = CanonicalLift.allCases.filter { trackedLifts.contains($0) }.map { lift in
-            makeLeaderboardLiftRow(
-                lift: lift,
-                performance: performances[lift],
+        let rows = StrengthMovementCategory.allCases.map { category in
+            makeLeaderboardMovementRow(
+                category: category,
+                performances: performances,
                 bodyweight: bodyweight,
                 sex: sex,
                 age: age
@@ -560,9 +560,9 @@ final class RepSyncStore {
         let rankedRows = rows.filter { $0.rank != .unranked }
         let averageScore = rankedRows.isEmpty ? 0 : rankedRows.reduce(0) { $0 + $1.rank.score } / Double(rankedRows.count)
         let overallRank = rankLevel(forScore: averageScore)
-        let bodyweightText = bodyweight.map { "\(formatWeight($0)) lbs" } ?? "-"
+        let bodyweightText = bodyweight.map { "\(formatBodyweight($0)) lbs" } ?? "-"
         let ageText = age.map(String.init) ?? "-"
-        let classSummary = "\(sex.rawValue) • \(ageText) • \(bodyweightText) • \(trainingAge.rawValue)"
+        let classSummary = "\(sex.rawValue) • \(ageText) • \(bodyweightText)"
         let heightSuffix = height.isEmpty ? "" : " • \(height)"
 
         return LeaderboardScreenState(
@@ -570,6 +570,7 @@ final class RepSyncStore {
             bodyweightClass: bodyweight.map(bodyweightClassText) ?? "-",
             overallRank: overallRank,
             overallScoreText: rankedRows.isEmpty ? "Log a ranked lift" : "\(formatWeight(averageScore)) / 5",
+            xpProgress: try makeLeaderboardXPProgress(from: completedWorkouts),
             rows: rows
         )
     }
@@ -587,7 +588,9 @@ final class RepSyncStore {
         }
         let total = leading + monthDays
         let trailingCount = (7 - (total.count % 7)) % 7
-        let trailing = (1...trailingCount).compactMap { Calendar.repsync.date(byAdding: .day, value: $0, to: monthDays.last ?? monthStart) }
+        let trailing = trailingCount == 0
+            ? []
+            : (1...trailingCount).compactMap { Calendar.repsync.date(byAdding: .day, value: $0, to: monthDays.last ?? monthStart) }
         let days = (leading + monthDays + trailing).map { day in
             CalendarDayModel(
                 date: day,
@@ -698,6 +701,123 @@ final class RepSyncStore {
         return bestByLift
     }
 
+    private func makeLeaderboardXPProgress(from completedWorkouts: [CompletedWorkout]) throws -> LeaderboardXPProgress {
+        let workoutDays = Set(completedWorkouts.compactMap { workout in
+            workout.performedOn.map { Calendar.repsync.startOfDay(for: $0) }
+        })
+        let workoutDayXP = workoutDays.count * 100
+        let consistencyXP = consistencyBonusXP(for: workoutDays)
+        let progressionXP = try liftProgressionXP()
+        let totalXP = workoutDayXP + consistencyXP + progressionXP
+
+        return leaderboardXPProgress(totalXP: totalXP)
+    }
+
+    private func consistencyBonusXP(for workoutDays: Set<Date>) -> Int {
+        let sortedDays = workoutDays.sorted()
+        guard !sortedDays.isEmpty else { return 0 }
+
+        var bonus = 0
+        var streakLength = 1
+        var previousDay = sortedDays[0]
+
+        for day in sortedDays.dropFirst() {
+            let expectedNextDay = Calendar.repsync.date(byAdding: .day, value: 1, to: previousDay)
+            if let expectedNextDay, Calendar.repsync.isDate(day, inSameDayAs: expectedNextDay) {
+                streakLength += 1
+                bonus += min(100, 15 + ((streakLength - 1) * 10))
+            } else {
+                streakLength = 1
+            }
+            previousDay = day
+        }
+
+        return bonus
+    }
+
+    private func liftProgressionXP() throws -> Int {
+        let workouts = try fetchCompletedWorkouts().sorted {
+            ($0.performedOn ?? $0.startedAt ?? .distantPast) < ($1.performedOn ?? $1.startedAt ?? .distantPast)
+        }
+        var bestOneRepMaxByLift: [CanonicalLift: Double] = [:]
+        var xp = 0
+
+        for workout in workouts {
+            guard let workoutID = workout.id else { continue }
+            let exercises = try fetchCompletedExercises(workoutID: workoutID)
+            for exercise in exercises {
+                guard let exerciseID = exercise.id,
+                      let exerciseName = exercise.name,
+                      let lift = CanonicalLift.match(exerciseName: exerciseName) else {
+                    continue
+                }
+
+                let sets = try fetchCompletedSets(exerciseID: exerciseID)
+                    .filter { $0.isCompleted && $0.weight > 0 && $0.reps > 0 }
+
+                for set in sets {
+                    let oneRepMax = estimatedOneRepMax(weight: set.weight, reps: Int(set.reps))
+                    let currentBest = bestOneRepMaxByLift[lift] ?? 0
+                    guard oneRepMax > currentBest else { continue }
+
+                    if currentBest > 0 {
+                        let improvement = oneRepMax - currentBest
+                        xp += 75 + min(225, Int(improvement.rounded(.down)) * 4)
+                    }
+                    bestOneRepMaxByLift[lift] = oneRepMax
+                }
+            }
+        }
+
+        return xp
+    }
+
+    private func leaderboardXPProgress(totalXP: Int) -> LeaderboardXPProgress {
+        var level = 1
+        var spentXP = 0
+
+        while level < 100 {
+            let requiredXP = leaderboardXPRequired(forLevel: level)
+            guard totalXP >= spentXP + requiredXP else { break }
+            spentXP += requiredXP
+            level += 1
+        }
+
+        let nextLevelXP = level >= 100 ? 0 : leaderboardXPRequired(forLevel: level)
+        let currentLevelXP = level >= 100 ? 0 : max(totalXP - spentXP, 0)
+        let progress = level >= 100 ? 1 : min(Double(currentLevelXP) / Double(max(nextLevelXP, 1)), 1)
+
+        return LeaderboardXPProgress(
+            level: level,
+            totalXP: totalXP,
+            currentLevelXP: currentLevelXP,
+            nextLevelXP: nextLevelXP,
+            progress: progress,
+            title: "Level \(level)",
+            iconName: leaderboardLevelIconName(for: level)
+        )
+    }
+
+    private func leaderboardXPRequired(forLevel level: Int) -> Int {
+        let clampedLevel = max(1, min(level, 99))
+        return 100 + Int(pow(Double(clampedLevel), 1.45) * 38)
+    }
+
+    private func leaderboardLevelIconName(for level: Int) -> String {
+        switch level {
+        case 90...100: return "trophy.fill"
+        case 80..<90: return "crown.fill"
+        case 70..<80: return "star.circle.fill"
+        case 60..<70: return "shield.fill"
+        case 50..<60: return "bolt.shield.fill"
+        case 40..<50: return "flame.fill"
+        case 30..<40: return "medal.fill"
+        case 20..<30: return "bolt.fill"
+        case 10..<20: return "dumbbell.fill"
+        default: return "figure.walk"
+        }
+    }
+
     private func makeLeaderboardLiftRow(
         lift: CanonicalLift,
         performance: CanonicalLiftPerformance?,
@@ -707,13 +827,14 @@ final class RepSyncStore {
     ) -> LeaderboardLiftRow {
         guard let performance else {
             return LeaderboardLiftRow(
-                id: lift,
-                lift: lift,
+                id: lift.movementCategory,
+                category: lift.movementCategory,
                 rank: .unranked,
                 bestSetText: "No matched lift",
                 estimatedOneRepMaxText: "-",
                 nextRankText: "Log \(lift.displayName)",
-                sourceExerciseName: nil
+                sourceExerciseName: nil,
+                contributingExercisesText: lift.movementCategory.contributingExerciseText
             )
         }
 
@@ -722,13 +843,14 @@ final class RepSyncStore {
 
         guard let bodyweight, bodyweight > 0 else {
             return LeaderboardLiftRow(
-                id: lift,
-                lift: lift,
+                id: lift.movementCategory,
+                category: lift.movementCategory,
                 rank: .unranked,
                 bestSetText: bestSetText,
                 estimatedOneRepMaxText: oneRepMaxText,
                 nextRankText: "Log bodyweight to rank",
-                sourceExerciseName: performance.exerciseName
+                sourceExerciseName: performance.exerciseName,
+                contributingExercisesText: lift.movementCategory.contributingExerciseText
             )
         }
 
@@ -748,14 +870,68 @@ final class RepSyncStore {
         )
 
         return LeaderboardLiftRow(
-            id: lift,
-            lift: lift,
+            id: lift.movementCategory,
+            category: lift.movementCategory,
             rank: rank,
             bestSetText: bestSetText,
             estimatedOneRepMaxText: oneRepMaxText,
             nextRankText: nextRankText,
-            sourceExerciseName: performance.exerciseName
+            sourceExerciseName: performance.exerciseName,
+            contributingExercisesText: lift.movementCategory.contributingExerciseText
         )
+    }
+
+    private func makeLeaderboardMovementRow(
+        category: StrengthMovementCategory,
+        performances: [CanonicalLift: CanonicalLiftPerformance],
+        bodyweight: Double?,
+        sex: BiologicalSex,
+        age: Int?
+    ) -> LeaderboardLiftRow {
+        let liftRows = category.contributingLifts.map { lift in
+            makeLeaderboardLiftRow(
+                lift: lift,
+                performance: performances[lift],
+                bodyweight: bodyweight,
+                sex: sex,
+                age: age
+            )
+        }
+
+        let bestRow = liftRows.max { lhs, rhs in
+            if lhs.rank.score == rhs.rank.score {
+                return oneRepMaxValue(from: lhs.estimatedOneRepMaxText) < oneRepMaxValue(from: rhs.estimatedOneRepMaxText)
+            }
+            return lhs.rank.score < rhs.rank.score
+        }
+
+        guard let bestRow, bestRow.rank != .unranked else {
+            return LeaderboardLiftRow(
+                id: category,
+                category: category,
+                rank: .unranked,
+                bestSetText: "No matched exercise",
+                estimatedOneRepMaxText: "-",
+                nextRankText: "Log \(category.contributingLifts.first?.displayName ?? category.displayName)",
+                sourceExerciseName: nil,
+                contributingExercisesText: category.contributingExerciseText
+            )
+        }
+
+        return LeaderboardLiftRow(
+            id: category,
+            category: category,
+            rank: bestRow.rank,
+            bestSetText: bestRow.bestSetText,
+            estimatedOneRepMaxText: bestRow.estimatedOneRepMaxText,
+            nextRankText: bestRow.nextRankText,
+            sourceExerciseName: bestRow.sourceExerciseName,
+            contributingExercisesText: category.contributingExerciseText
+        )
+    }
+
+    private func oneRepMaxValue(from text: String) -> Double {
+        Double(text.components(separatedBy: CharacterSet(charactersIn: "0123456789.").inverted).joined()) ?? 0
     }
 
     private func estimatedOneRepMax(weight: Double, reps: Int) -> Double {
@@ -846,16 +1022,14 @@ final class RepSyncStore {
         case (.hipThrust, .female): return (0.85, 1.25, 1.90, 2.50)
         case (.legExtension, .male): return (0.55, 0.85, 1.20, 1.60)
         case (.legExtension, .female): return (0.40, 0.65, 0.95, 1.25)
+        case (.legPress, .male): return (1.50, 2.25, 3.00, 3.75)
+        case (.legPress, .female): return (1.10, 1.70, 2.35, 3.00)
         case (.legCurl, .male): return (0.35, 0.55, 0.80, 1.05)
         case (.legCurl, .female): return (0.28, 0.45, 0.68, 0.90)
         case (.calfRaise, .male): return (0.80, 1.20, 1.70, 2.25)
         case (.calfRaise, .female): return (0.60, 0.95, 1.35, 1.80)
         case (.legRaise, .male): return (0.05, 0.12, 0.25, 0.40)
         case (.legRaise, .female): return (0.05, 0.10, 0.20, 0.34)
-        case (.abductor, .male): return (0.35, 0.55, 0.85, 1.15)
-        case (.abductor, .female): return (0.30, 0.50, 0.78, 1.05)
-        case (.adductor, .male): return (0.35, 0.55, 0.85, 1.15)
-        case (.adductor, .female): return (0.30, 0.50, 0.78, 1.05)
         case (.chestPress, .male): return (0.65, 0.95, 1.35, 1.75)
         case (.chestPress, .female): return (0.38, 0.60, 0.90, 1.20)
         case (.chestFly, .male): return (0.22, 0.35, 0.52, 0.70)
@@ -866,10 +1040,6 @@ final class RepSyncStore {
         case (.romanianDeadlift, .female): return (0.70, 1.05, 1.55, 2.00)
         case (.backExtension, .male): return (0.30, 0.55, 0.90, 1.25)
         case (.backExtension, .female): return (0.20, 0.40, 0.70, 1.00)
-        case (.dip, .male): return (0.10, 0.35, 0.70, 1.05)
-        case (.dip, .female): return (0.05, 0.18, 0.45, 0.75)
-        case (.shrug, .male): return (0.80, 1.20, 1.70, 2.25)
-        case (.shrug, .female): return (0.55, 0.85, 1.25, 1.65)
         }
     }
 
@@ -906,14 +1076,26 @@ final class RepSyncStore {
 
     private func fetchBodyweightEntryModels() throws -> [BodyweightEntryModel] {
         var models: [BodyweightEntryModel] = []
-        for entry in try fetchBodyweightEntries() {
+        let entries = try fetchBodyweightEntries()
+        for (index, entry) in entries.enumerated() {
             guard let id = entry.id, let date = entry.recordedOn else { continue }
             let value = entry.weight
+            let previousValue = entries.indices.contains(index + 1) ? entries[index + 1].weight : nil
+            let fluctuation = previousValue.map { value - $0 }
+            let roundedFluctuation = fluctuation.map { (abs($0) * 10).rounded() / 10 }
+            let roundedFluctuationValue = roundedFluctuation ?? 0
+            let fluctuationText = formatBodyweight(roundedFluctuationValue)
+            let fluctuationDirection: BodyweightFluctuationDirection? = {
+                guard let fluctuation, roundedFluctuationValue > 0 else { return .flat }
+                return fluctuation > 0 ? .up : .down
+            }()
             models.append(BodyweightEntryModel(
                 id: id,
                 date: date,
                 dateText: DateFormatter.repsyncShortDate.string(from: date),
-                weightText: "\(formatWeight(value)) lbs",
+                weightText: "\(formatBodyweight(value)) lbs",
+                fluctuationText: fluctuationText,
+                fluctuationDirection: fluctuationDirection,
                 value: value,
                 photoPath: entry.photoPath
             ))
@@ -1080,7 +1262,7 @@ final class RepSyncStore {
         let samples = bodyweightTrendSamples(entries: entries)
         guard let latestTrend = samples.last else { return nil }
 
-        return "\(formatWeight(latestTrend.value)) lbs"
+        return "\(formatBodyweight(latestTrend.value)) lbs"
     }
 
     private func smoothedBodyweightSamples(_ dailySamples: [(date: Date, value: Double)]) -> [(date: Date, value: Double)] {
@@ -1118,7 +1300,7 @@ final class RepSyncStore {
             return nil
         }
 
-        return "\(formatWeight(low.value)) lbs on \(DateFormatter.repsyncShortDate.string(from: low.date))"
+        return "\(formatBodyweight(low.value)) lbs on \(DateFormatter.repsyncShortDate.string(from: low.date))"
     }
 
     private func bodyweightDailySamples(entries: [BodyweightEntryModel], startDate: Date, endDate: Date) -> [(date: Date, value: Double)] {
@@ -1248,7 +1430,6 @@ final class RepSyncStore {
     private let profileHeightKey = "profile_height"
     private let profileBirthdateKey = "profile_birthdate"
     private let profileSexKey = "profile_sex"
-    private let profileTrainingAgeKey = "profile_training_age"
     private let leaderboardTrackedLiftsKey = "leaderboard_tracked_lifts"
 
     private func workoutMusicPlaylistIDKey(_ templateID: UUID) -> String {
