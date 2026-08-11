@@ -2,27 +2,61 @@ import SwiftUI
 
 struct HomeScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
+    @State private var showsMonthPicker = false
+    @State private var selectedMonth = Date()
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
+    private let monthSymbols = DateFormatter().monthSymbols ?? []
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 RepSyncCard {
                     HStack {
-                        Button("<<") { appModel.previousMonth() }
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(RepSyncTheme.textPrimary)
-                            .frame(width: 40, height: 40)
+                        Button {
+                            appModel.previousMonth()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(width: 40, height: 40)
+                                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+
                         Spacer()
-                        Text(appModel.homeState.monthTitle)
-                            .font(.system(size: 22, weight: .bold))
+
+                        Button {
+                            selectedMonth = appModel.homeState.currentMonth
+                            showsMonthPicker = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 15, weight: .bold))
+                                Text(appModel.homeState.monthTitle)
+                                    .font(.system(size: 21, weight: .bold))
+                                    .lineLimit(1)
+                            }
                             .foregroundStyle(RepSyncTheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .frame(height: 40)
+                            .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Choose month and year")
+
                         Spacer()
-                        Button(">>") { appModel.nextMonth() }
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(RepSyncTheme.textPrimary)
-                            .frame(width: 40, height: 40)
+
+                        Button {
+                            appModel.nextMonth()
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(width: 40, height: 40)
+                                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     VStack(spacing: 8) {
@@ -44,20 +78,27 @@ struct HomeScreen: View {
                             } label: {
                                 Text(day.label)
                                     .font(.system(size: 16, weight: day.hasWorkout ? .semibold : .regular))
-                                    .foregroundStyle(day.isInCurrentMonth ? RepSyncTheme.textPrimary : RepSyncTheme.textSecondary.opacity(0.4))
+                                    .foregroundStyle(calendarDayTextColor(day))
                                     .frame(width: 36, height: 36)
-                                    .background(day.hasWorkout ? RepSyncTheme.calendarWorkoutDay : .clear)
-                                    .clipShape(Circle())
+                                    .repsyncGlassButtonBackground(calendarDayFill(day), shape: .circle)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(calendarDayBorder(day), lineWidth: 1)
+                                    )
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(DateFormatter.repsyncLongDate.string(from: day.date))")
                         }
                     }
                 }
                 .padding(.top, 16)
 
                 if appModel.profileState.streak > 0 {
-                    RepSyncStreakBadge(streak: appModel.profileState.streak)
+                    RepSyncStreakBadge(
+                        streak: appModel.profileState.streak,
+                        workoutCount: appModel.profileState.workoutCount
+                    )
                         .padding(.top, 12)
                 }
 
@@ -68,9 +109,18 @@ struct HomeScreen: View {
                         appModel.showWorkouts()
                     }
 
-                    RepSyncPrimaryButton(title: "Quick Go") {
+                    Button {
                         appModel.showQuickWorkout()
+                    } label: {
+                        Text("Quick Go")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 60)
+                            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .roundedRectangle(cornerRadius: 16))
                     }
+                    .buttonStyle(.plain)
                 }
                 .padding(.bottom, 12)
             }
@@ -78,127 +128,797 @@ struct HomeScreen: View {
             .padding(.horizontal, 16)
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
-        .confirmationDialog("Choose Music Provider", isPresented: $appModel.showsMusicProviderPicker) {
-            Button("Apple Music") { appModel.selectMusicProvider(.appleMusic) }
-            Button("Spotify") { appModel.selectMusicProvider(.spotify) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Choose Apple Music or Spotify for workout audio controls.")
+        .overlay {
+            if showsMonthPicker {
+                RepSyncCenteredOverlay(maxWidth: 390, onDismiss: { showsMonthPicker = false }) {
+                    monthPickerOverlay
+                }
+            }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsMonthPicker)
+    }
+
+    private var monthPickerOverlay: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Choose Month")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text(DateFormatter.repsyncMonthYear.string(from: selectedMonth))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.primaryGreen)
+                }
+
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Text("Month")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                    Text("Year")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                }
+
+                HStack(spacing: 12) {
+                    Picker(
+                        "Month",
+                        selection: Binding(
+                            get: { Calendar.repsync.component(.month, from: selectedMonth) },
+                            set: { updateSelectedMonth(month: $0) }
+                        )
+                    ) {
+                        ForEach(1...12, id: \.self) { month in
+                            Text(monthSymbols[month - 1]).tag(month)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+
+                    Picker(
+                        "Year",
+                        selection: Binding(
+                            get: { Calendar.repsync.component(.year, from: selectedMonth) },
+                            set: { updateSelectedMonth(year: $0) }
+                        )
+                    ) {
+                        ForEach(selectableYears, id: \.self) { year in
+                            Text(String(year)).tag(year)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                }
+                .frame(height: 150)
+            }
+            .padding(12)
+            .background(RepSyncTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(RepSyncTheme.divider.opacity(0.28), lineWidth: 1)
+            )
+
+            Button {
+                appModel.selectMonth(containing: selectedMonth)
+                showsMonthPicker = false
+            } label: {
+                Text("Done")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func calendarDayFill(_ day: CalendarDayModel) -> Color {
+        if day.hasWorkout {
+            return RepSyncTheme.primaryGreen.opacity(0.58)
+        }
+        return day.isInCurrentMonth ? RepSyncTheme.cardElevated.opacity(0.78) : RepSyncTheme.cardElevated.opacity(0.28)
+    }
+
+    private func calendarDayBorder(_ day: CalendarDayModel) -> Color {
+        day.hasWorkout ? RepSyncTheme.primaryGreen.opacity(0.35) : RepSyncTheme.divider.opacity(day.isInCurrentMonth ? 0.42 : 0.16)
+    }
+
+    private func calendarDayTextColor(_ day: CalendarDayModel) -> Color {
+        if day.hasWorkout {
+            return RepSyncTheme.textPrimary
+        }
+        return day.isInCurrentMonth ? RepSyncTheme.textPrimary : RepSyncTheme.textSecondary.opacity(0.45)
+    }
+
+    private var selectableYears: [Int] {
+        let currentYear = Calendar.repsync.component(.year, from: Date())
+        return Array((currentYear - 20)...(currentYear + 5))
+    }
+
+    private func updateSelectedMonth(month: Int? = nil, year: Int? = nil) {
+        let currentMonth = Calendar.repsync.component(.month, from: selectedMonth)
+        let currentYear = Calendar.repsync.component(.year, from: selectedMonth)
+        let components = DateComponents(
+            year: year ?? currentYear,
+            month: month ?? currentMonth,
+            day: 1
+        )
+
+        if let date = Calendar.repsync.date(from: components) {
+            selectedMonth = date
         }
     }
 }
 
+private enum LeaderboardStandingsScope: String, CaseIterable, Identifiable {
+    case global = "Global"
+    case friends = "Friends"
+
+    var id: String { rawValue }
+}
+
+private struct LeaderboardStandingRow: Identifiable {
+    let id = UUID()
+    let placement: Int
+    let username: String
+    let rank: StrengthRankLevel
+    let level: Int
+    let isCurrentUser: Bool
+}
+
 struct LeaderboardScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
-    @State private var showsTrackedLifts = false
-    @State private var showsUpperBody = true
-    @State private var showsLowerBody = true
+    @State private var selectedLeaderboardScope = LeaderboardStandingsScope.global
+    @State private var showsLeaderboardUsernameSheet = false
+    @State private var leaderboardUsernameDraft = ""
+    @State private var showsAddFriendSheet = false
+    @State private var friendUsernameDraft = ""
+    @State private var showsFriendRequestsSheet = false
+
+    private let leaderboardAccent = RepSyncTheme.primaryGreenDark
+    private var leaderboardDisplayName: String {
+        appModel.leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "You" : appModel.leaderboardUsername
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
                 RepSyncCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Leaderboard")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(RepSyncTheme.textPrimary)
-
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Overall")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(RepSyncTheme.textSecondary)
-                                Text(appModel.leaderboardState.overallRank.rawValue)
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundStyle(appModel.leaderboardState.overallRank == .unranked ? RepSyncTheme.textSecondary : RepSyncTheme.primaryGreen)
-                            }
-
-                            Spacer()
-
-                            Text(appModel.leaderboardState.overallScoreText)
-                                .font(.system(size: 14, weight: .semibold))
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .center, spacing: 4) {
+                            Text("Leaderboard")
+                                .font(.system(size: 24, weight: .bold))
                                 .foregroundStyle(RepSyncTheme.textPrimary)
-                                .padding(.horizontal, 12)
-                                .frame(height: 34)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(Capsule())
+                            Text(appModel.leaderboardState.classSummary)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(RepSyncTheme.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.62)
+                                .allowsTightening(true)
+
+                            Button {
+                                leaderboardUsernameDraft = appModel.leaderboardUsername
+                                showsLeaderboardUsernameSheet = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "at")
+                                        .font(.system(size: 10, weight: .bold))
+                                    Text(leaderboardDisplayName)
+                                        .font(.system(size: 12, weight: .bold))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.75)
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 10, weight: .bold))
+                                }
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .padding(.horizontal, 10)
+                                .frame(height: 28)
+                                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        HStack(spacing: 8) {
+                            liftingRankMetric
+                            levelMetric
                         }
 
-                        Text(appModel.leaderboardState.classSummary)
-                            .font(.system(size: 14))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        leaderboardStandingsCard
                     }
                 }
 
-                RepSyncCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showsTrackedLifts.toggle()
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Tracked Lifts")
-                                        .font(.system(size: 18, weight: .bold))
-                                        .foregroundStyle(RepSyncTheme.textPrimary)
-                                    Text("\(appModel.trackedLeaderboardLifts.count) of \(CanonicalLift.allCases.count) shown")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
-                                }
+                Button {
+                    appModel.showRankedMovements()
+                } label: {
+                    RepSyncCard {
+                        HStack(spacing: 12) {
+                            Image(systemName: "scope")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(leaderboardAccent)
+                                .frame(width: 36, height: 36)
+                                .background(leaderboardAccent.opacity(0.14))
+                                .clipShape(Circle())
 
-                                Spacer()
-
-                                Image(systemName: showsTrackedLifts ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 14, weight: .bold))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Ranked Movements")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(RepSyncTheme.textPrimary)
+                                Text("\(StrengthMovementCategory.allCases.count) categories from \(CanonicalLift.allCases.count) standardized exercises")
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
                             }
-                        }
-                        .buttonStyle(.plain)
 
-                        if showsTrackedLifts {
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
-                                ForEach(CanonicalLift.allCases) { lift in
-                                    trackedLiftToggle(lift)
-                                }
-                            }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            Spacer(minLength: 0)
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(leaderboardAccent)
                         }
                     }
                 }
-
-                VStack(spacing: 10) {
-                    if appModel.leaderboardState.rows.isEmpty {
-                        RepSyncCard {
-                            Text("Select at least one tracked lift to show rankings.")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(RepSyncTheme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        leaderboardSection(
-                            title: LeaderboardLiftSection.upperBody.rawValue,
-                            rows: rows(in: .upperBody),
-                            isExpanded: $showsUpperBody
-                        )
-                        leaderboardSection(
-                            title: LeaderboardLiftSection.lowerBody.rawValue,
-                            rows: rows(in: .lowerBody),
-                            isExpanded: $showsLowerBody
-                        )
-                    }
-                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
             .padding(.bottom, 24)
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
+        .onAppear {
+            if appModel.leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                leaderboardUsernameDraft = ""
+                showsLeaderboardUsernameSheet = true
+            }
+        }
+        .sheet(isPresented: $showsLeaderboardUsernameSheet) {
+            leaderboardUsernameSheet
+                .interactiveDismissDisabled(appModel.leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .overlay {
+            if showsAddFriendSheet {
+                RepSyncCenteredOverlay(onDismiss: { showsAddFriendSheet = false }) {
+                    addFriendOverlay
+                }
+            }
+
+            if showsFriendRequestsSheet {
+                RepSyncCenteredOverlay(onDismiss: { showsFriendRequestsSheet = false }) {
+                    friendRequestsOverlay
+                }
+            }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsAddFriendSheet)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsFriendRequestsSheet)
+    }
+
+    private var liftingRankMetric: some View {
+        let rank = appModel.leaderboardState.overallRank
+
+        return HStack(spacing: 10) {
+            Image(systemName: rankIconName(for: rank))
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(width: 34, height: 34)
+                .repsyncGlassButtonBackground(rank != .unranked ? leaderboardAccent.opacity(0.58) : RepSyncTheme.cardElevated, shape: .circle)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Rank")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .lineLimit(1)
+                Text(rank.rawValue)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(rank != .unranked ? leaderboardAccent : RepSyncTheme.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 62)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(appModel.leaderboardState.overallRank != .unranked ? leaderboardAccent.opacity(0.28) : RepSyncTheme.divider.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private var levelMetric: some View {
+        let progress = appModel.leaderboardState.xpProgress
+
+        return HStack(spacing: 10) {
+            Image(systemName: progress.iconName)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(width: 34, height: 34)
+                .repsyncGlassButtonBackground(leaderboardAccent.opacity(0.58), shape: .circle)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Text(progress.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    Text("\(progress.totalXP) XP")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(RepSyncTheme.background.opacity(0.72))
+                        Capsule()
+                            .fill(leaderboardAccent.opacity(0.74))
+                            .frame(width: max(proxy.size.width * progress.progress, 6))
+                    }
+                }
+                .frame(height: 7)
+
+                Text(progress.level >= 100 ? "Max level" : progress.xpSummary)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 62)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(leaderboardAccent.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    private var leaderboardStandingsCard: some View {
+        let rows = Array(standingsRows(for: selectedLeaderboardScope).prefix(15))
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ForEach(LeaderboardStandingsScope.allCases) { scope in
+                    Button {
+                        selectedLeaderboardScope = scope
+                    } label: {
+                        Text(scope.rawValue)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 34)
+                            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .repsyncGlassButtonBackground(selectedLeaderboardScope == scope ? leaderboardAccent.opacity(0.58) : RepSyncTheme.card, shape: .roundedRectangle(cornerRadius: 10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(selectedLeaderboardScope == scope ? leaderboardAccent.opacity(0.35) : RepSyncTheme.divider.opacity(0.24), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button {
+                    friendUsernameDraft = ""
+                    showsAddFriendSheet = true
+                } label: {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                        .frame(width: 34, height: 34)
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.card, shape: .roundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(RepSyncTheme.divider.opacity(0.24), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add Friend")
+
+                Button {
+                    showsFriendRequestsSheet = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: appModel.incomingFriendRequests.isEmpty ? "tray" : "tray.full")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+
+                        if !appModel.incomingFriendRequests.isEmpty {
+                            Text("\(appModel.incomingFriendRequests.count)")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(width: 14, height: 14)
+                                .background(RepSyncTheme.primaryGreen)
+                                .clipShape(Circle())
+                                .offset(x: 6, y: -6)
+                        }
+                    }
+                    .frame(width: 34, height: 34)
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(appModel.incomingFriendRequests.isEmpty ? RepSyncTheme.card : leaderboardAccent.opacity(0.42), shape: .roundedRectangle(cornerRadius: 10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(appModel.incomingFriendRequests.isEmpty ? RepSyncTheme.divider.opacity(0.24) : leaderboardAccent.opacity(0.35), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Friend Requests")
+            }
+
+            if rows.count > 6 {
+                ScrollView {
+                    leaderboardChart(rows: rows)
+                }
+                .frame(height: 268)
+            } else {
+                leaderboardChart(rows: rows)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(RepSyncTheme.divider.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private func leaderboardChart(rows: [LeaderboardStandingRow]) -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Place")
+                    .frame(width: 52, alignment: .leading)
+                Text("Username")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("Rank")
+                    .frame(width: 74, alignment: .leading)
+                Text("Level")
+                    .frame(width: 52, alignment: .leading)
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(RepSyncTheme.textSecondary)
+            .padding(.horizontal, 10)
+            .padding(.top, 2)
+
+            ForEach(rows) { row in
+                standingsRow(row)
+            }
+        }
+    }
+
+    private func standingsRow(_ row: LeaderboardStandingRow) -> some View {
+        HStack(spacing: 8) {
+            placementLabel(for: row)
+                .frame(width: 52, alignment: .leading)
+
+            Text(row.username)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(row.rank.rawValue)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(row.rank == .unranked ? RepSyncTheme.textSecondary : leaderboardAccent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+                .frame(width: 74, alignment: .leading)
+
+            Text("Lv \(row.level)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .lineLimit(1)
+                .frame(width: 52, alignment: .leading)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 36)
+        .background(row.isCurrentUser ? leaderboardAccent.opacity(0.14) : RepSyncTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(row.isCurrentUser ? leaderboardAccent.opacity(0.35) : RepSyncTheme.divider.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func placementLabel(for row: LeaderboardStandingRow) -> some View {
+        HStack(spacing: 4) {
+            Text("#\(row.placement)")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(row.isCurrentUser ? leaderboardAccent : RepSyncTheme.textSecondary)
+
+            if let iconName = placementIconName(for: row.placement) {
+                Image(systemName: iconName)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(placementIconColor(for: row.placement))
+            }
+        }
+    }
+
+    private func placementIconName(for placement: Int) -> String? {
+        placement == 1 ? "crown.fill" : nil
+    }
+
+    private func placementIconColor(for placement: Int) -> Color {
+        placement == 1 ? RepSyncTheme.warningOrange : RepSyncTheme.textSecondary
+    }
+
+    private func standingsRows(for scope: LeaderboardStandingsScope) -> [LeaderboardStandingRow] {
+        let userRow = LeaderboardStandingRow(
+            placement: 0,
+            username: leaderboardDisplayName,
+            rank: appModel.leaderboardState.overallRank,
+            level: appModel.leaderboardState.xpProgress.level,
+            isCurrentUser: true
+        )
+        let rows: [LeaderboardStandingRow]
+
+        switch scope {
+        case .global:
+            rows = [
+                LeaderboardStandingRow(placement: 0, username: "ironatlas", rank: .advanced, level: max(userRow.level + 8, 18), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "tempoqueen", rank: .intermediate, level: max(userRow.level + 3, 12), isCurrentUser: false),
+                userRow,
+                LeaderboardStandingRow(placement: 0, username: "platesetter", rank: .novice, level: max(userRow.level - 2, 1), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "repforge", rank: .novice, level: max(userRow.level - 4, 1), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "barpath", rank: .intermediate, level: max(userRow.level + 1, 10), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "lockout", rank: .novice, level: max(userRow.level - 3, 1), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "hypertrophy", rank: .advanced, level: max(userRow.level + 6, 16), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "setsandreps", rank: .untrained, level: max(userRow.level - 6, 1), isCurrentUser: false),
+                LeaderboardStandingRow(placement: 0, username: "chalkline", rank: .intermediate, level: max(userRow.level + 4, 14), isCurrentUser: false)
+            ]
+        case .friends:
+            let friendRows = appModel.leaderboardFriends.map { friendStandingRow(username: $0, userLevel: userRow.level) }
+            rows = friendRows + [userRow]
+        }
+
+        return rows
+            .sorted { lhs, rhs in
+                if lhs.level == rhs.level {
+                    return lhs.rank.score > rhs.rank.score
+                }
+                return lhs.level > rhs.level
+            }
+            .enumerated()
+            .map { index, row in
+                LeaderboardStandingRow(
+                    placement: index + 1,
+                    username: row.username,
+                    rank: row.rank,
+                    level: row.level,
+                    isCurrentUser: row.isCurrentUser
+                )
+            }
+    }
+
+    private func friendStandingRow(username: String, userLevel: Int) -> LeaderboardStandingRow {
+        let score = username.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        let rankOptions: [StrengthRankLevel] = [.untrained, .novice, .intermediate, .advanced]
+        let rank = rankOptions[score % rankOptions.count]
+        let levelDelta = (score % 11) - 5
+
+        return LeaderboardStandingRow(
+            placement: 0,
+            username: username,
+            rank: rank,
+            level: max(1, userLevel + levelDelta),
+            isCurrentUser: false
+        )
+    }
+
+    private var addFriendOverlay: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add Friend")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            Text("Send a request by leaderboard username.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+
+            TextField("username", text: $friendUsernameDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(RepSyncTheme.input)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                )
+
+            Button {
+                appModel.sendLeaderboardFriendRequest(to: friendUsernameDraft)
+                if !friendUsernameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    friendUsernameDraft = ""
+                    showsAddFriendSheet = false
+                }
+            } label: {
+                Text("Send Request")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+
+            if !appModel.sentFriendRequests.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pending")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+
+                    ForEach(appModel.sentFriendRequests, id: \.self) { username in
+                        Text(username)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 34)
+                            .background(RepSyncTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+            }
+        }
+    }
+
+    private var friendRequestsOverlay: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Friend Requests")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            if appModel.incomingFriendRequests.isEmpty {
+                Text("No incoming requests.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(RepSyncTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                ForEach(appModel.incomingFriendRequests, id: \.self) { username in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(username)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                            Text("Wants to compare leaderboard progress")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(RepSyncTheme.textSecondary)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            appModel.declineLeaderboardFriendRequest(from: username)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(width: 34, height: 34)
+                                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .circle)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            appModel.acceptLeaderboardFriendRequest(from: username)
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(width: 34, height: 34)
+                                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .circle)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(RepSyncTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(RepSyncTheme.divider.opacity(0.28), lineWidth: 1)
+                    )
+                }
+            }
+        }
+    }
+
+    private var leaderboardUsernameSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Leaderboard Username")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            Text("This is the name shown in future global and friend leaderboard rankings.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            TextField("username", text: $leaderboardUsernameDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .padding(.horizontal, 14)
+                .frame(height: 48)
+                .background(RepSyncTheme.input)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                )
+
+            Button {
+                appModel.saveLeaderboardUsername(leaderboardUsernameDraft)
+                if !leaderboardUsernameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    showsLeaderboardUsernameSheet = false
+                }
+            } label: {
+                Text("Save")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .background(RepSyncTheme.background)
+        .presentationBackground(RepSyncTheme.background)
+        .presentationDetents([.height(290)])
+    }
+
+    private func rankIconName(for rank: StrengthRankLevel) -> String {
+        switch rank {
+        case .unranked: return "questionmark"
+        case .untrained: return "figure.walk"
+        case .novice: return "leaf.fill"
+        case .intermediate: return "bolt.fill"
+        case .advanced: return "flame.fill"
+        case .elite: return "trophy.fill"
+        }
+    }
+
+    @ViewBuilder
+    private func rankPill(_ rank: StrengthRankLevel) -> some View {
+        if rank == .unranked {
+            Text(rank.rawValue)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(RepSyncTheme.cardElevated)
+                .clipShape(Capsule())
+        } else {
+            RepSyncSelectedChip(title: rank.rawValue, height: 30)
+        }
     }
 
     private func rows(in section: LeaderboardLiftSection) -> [LeaderboardLiftRow] {
-        appModel.leaderboardState.rows.filter { $0.lift.leaderboardSection == section }
+        appModel.leaderboardState.rows.filter { $0.category.leaderboardSection == section }
     }
 
     private func leaderboardSection(
@@ -213,9 +933,14 @@ struct LeaderboardScreen: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Text(title)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                        Text(sectionSummary(for: rows))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                    }
 
                     Text("\(rows.count)")
                         .font(.system(size: 12, weight: .bold))
@@ -229,22 +954,23 @@ struct LeaderboardScreen: View {
 
                     Image(systemName: isExpanded.wrappedValue ? "chevron.up" : "chevron.down")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .foregroundStyle(leaderboardAccent)
                 }
                 .padding(.horizontal, 16)
-                .frame(height: 48)
+                .frame(height: 56)
                 .background(RepSyncTheme.card)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
 
             if isExpanded.wrappedValue {
                 if rows.isEmpty {
                     RepSyncCard {
-                        Text("No tracked lifts in this section.")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        emptyLeaderboardMessage("No ranked movements in this section.")
                     }
                 } else {
                     ForEach(rows) { row in
@@ -253,6 +979,11 @@ struct LeaderboardScreen: View {
                 }
             }
         }
+    }
+
+    private func sectionSummary(for rows: [LeaderboardLiftRow]) -> String {
+        let ranked = rows.filter { $0.rank != .unranked }.count
+        return ranked == 0 ? "No ranked lifts yet" : "\(ranked) ranked"
     }
 
     private func trackedLiftToggle(_ lift: CanonicalLift) -> some View {
@@ -264,7 +995,7 @@ struct LeaderboardScreen: View {
             HStack(spacing: 8) {
                 Image(systemName: isTracked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(isTracked ? RepSyncTheme.primaryGreen : RepSyncTheme.textSecondary)
+                    .foregroundStyle(isTracked ? leaderboardAccent : RepSyncTheme.textSecondary)
 
                 Text(lift.displayName)
                     .font(.system(size: 13, weight: .semibold))
@@ -276,45 +1007,37 @@ struct LeaderboardScreen: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 38)
-            .background(isTracked ? RepSyncTheme.primaryGreen.opacity(0.14) : RepSyncTheme.cardElevated)
+            .background(isTracked ? leaderboardAccent.opacity(0.22) : RepSyncTheme.cardElevated)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(isTracked ? leaderboardAccent.opacity(0.45) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
 
-    private func leaderboardRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14))
-                .foregroundStyle(RepSyncTheme.textSecondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(RepSyncTheme.textPrimary)
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 38)
-        .background(RepSyncTheme.cardElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
     private func leaderboardLiftCard(_ row: LeaderboardLiftRow) -> some View {
         RepSyncCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(row.lift.displayName)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(RepSyncTheme.textPrimary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.category.displayName)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .lineLimit(1)
 
-                    Spacer()
+                        if let sourceExerciseName = row.sourceExerciseName {
+                            Text("Best from \(sourceExerciseName)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(RepSyncTheme.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
 
-                    Text(row.rank.rawValue)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(row.rank == .unranked ? RepSyncTheme.textSecondary : RepSyncTheme.primaryGreen)
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .background((row.rank == .unranked ? RepSyncTheme.cardElevated : RepSyncTheme.primaryGreen.opacity(0.15)))
-                        .clipShape(Capsule())
+                    Spacer(minLength: 8)
+
+                    rankPill(row.rank)
                 }
 
                 HStack(spacing: 10) {
@@ -322,17 +1045,31 @@ struct LeaderboardScreen: View {
                     liftMetric(title: "Est. 1RM", value: row.estimatedOneRepMaxText)
                 }
 
-                if let sourceExerciseName = row.sourceExerciseName {
-                    Text("Matched from \(sourceExerciseName)")
-                        .font(.system(size: 12))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
-                }
+                Text(row.contributingExercisesText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if let nextRankText = row.nextRankText {
-                    Text(nextRankText)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(RepSyncTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(leaderboardAccent)
+                            .padding(.top, 2)
+                        Text(nextRankText)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RepSyncTheme.cardElevated.opacity(0.75))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(RepSyncTheme.divider.opacity(0.28), lineWidth: 1)
+                    )
                 }
             }
         }
@@ -354,6 +1091,215 @@ struct LeaderboardScreen: View {
         .frame(height: 54)
         .background(RepSyncTheme.cardElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(RepSyncTheme.divider.opacity(0.28), lineWidth: 1)
+        )
+    }
+
+    private func emptyLeaderboardMessage(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "chart.bar.xaxis")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+
+            Text(message)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct RankedMovementsScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appModel: RepSyncAppModel
+
+    private let accent = RepSyncTheme.primaryGreenDark
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                headerCard
+
+                ForEach(LeaderboardLiftSection.allCases) { section in
+                    movementSection(section)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 24)
+        }
+        .background(RepSyncTheme.background.ignoresSafeArea())
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private var headerCard: some View {
+        RepSyncCard {
+            HStack(alignment: .center, spacing: 12) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                        .frame(width: 42, height: 42)
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Ranked Movements")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text("\(StrengthMovementCategory.allCases.count) strength categories from \(CanonicalLift.allCases.count) standardized exercises")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func movementSection(_ section: LeaderboardLiftSection) -> some View {
+        let rows = appModel.leaderboardState.rows.filter { $0.category.leaderboardSection == section }
+
+        return RepSyncCard {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(section.rawValue)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text(sectionSubtitle(for: section))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                }
+
+                VStack(spacing: 10) {
+                    ForEach(rows) { row in
+                        movementRow(row)
+                    }
+                }
+            }
+        }
+    }
+
+    private func movementRow(_ row: LeaderboardLiftRow) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: iconName(for: row.category))
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .frame(width: 34, height: 34)
+                    .repsyncGlassButtonBackground(accent.opacity(0.45), shape: .circle)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(row.category.displayName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    Text(row.contributingExercisesText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 6)
+
+                rankPill(row.rank)
+            }
+
+            if let sourceExerciseName = row.sourceExerciseName {
+                HStack(spacing: 8) {
+                    liftMetric(title: "Best From", value: sourceExerciseName)
+                    liftMetric(title: "Est. 1RM", value: row.estimatedOneRepMaxText)
+                }
+            } else if let nextRankText = row.nextRankText {
+                Text(nextRankText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(minHeight: 42)
+                    .background(RepSyncTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(RepSyncTheme.divider.opacity(0.22), lineWidth: 1)
+                    )
+            }
+        }
+        .padding(12)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(RepSyncTheme.divider.opacity(0.24), lineWidth: 1)
+        )
+    }
+
+    private func sectionSubtitle(for section: LeaderboardLiftSection) -> String {
+        switch section {
+        case .upperBody:
+            return "Pressing and pulling patterns"
+        case .lowerBody:
+            return "Squat, hinge, and leg patterns"
+        case .accessories:
+            return "Arms, calves, and core work"
+        }
+    }
+
+    @ViewBuilder
+    private func rankPill(_ rank: StrengthRankLevel) -> some View {
+        if rank == .unranked {
+            Text(rank.rawValue)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(RepSyncTheme.cardElevated)
+                .clipShape(Capsule())
+        } else {
+            RepSyncSelectedChip(title: rank.rawValue, height: 30)
+        }
+    }
+
+    private func liftMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .frame(height: 50)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func iconName(for category: StrengthMovementCategory) -> String {
+        switch category {
+        case .horizontalPress, .verticalPress:
+            return "arrow.up.forward"
+        case .horizontalPull, .verticalPull:
+            return "arrow.down.backward"
+        case .squat, .kneeExtension:
+            return "figure.strengthtraining.traditional"
+        case .hinge, .hipExtension:
+            return "figure.strengthtraining.functional"
+        case .kneeFlexion, .armFlexion, .armExtension:
+            return "dumbbell.fill"
+        case .calvesCore:
+            return "circle.hexagongrid.fill"
+        }
     }
 }
 
@@ -406,8 +1352,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
 
                 Button("Connect") {
                     appModel.showMusicProviderPicker()
@@ -416,8 +1361,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 42)
-                .background(RepSyncTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 10))
             }
         }
     }
@@ -466,8 +1410,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 10))
 
                 Button(appModel.isSpotifyConnected ? "Next" : "Open App") {
                     if appModel.isSpotifyConnected {
@@ -480,8 +1423,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
             }
 
             HStack(spacing: 10) {
@@ -493,8 +1435,7 @@ private struct HomeMusicWidget: View {
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
                 }
 
                 Button("Change Provider") {
@@ -504,8 +1445,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
             }
         }
     }
@@ -552,8 +1492,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 10))
 
                 Button("Next") {
                     appModel.skipAppleMusicTrack()
@@ -562,8 +1501,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
 
                 Button("Open") {
                     appModel.openAppleMusicApp()
@@ -572,8 +1510,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
             }
 
             HStack(spacing: 10) {
@@ -585,8 +1522,7 @@ private struct HomeMusicWidget: View {
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
                 }
 
                 Button(appModel.isRefreshingAppleMusic ? "Refreshing..." : "Refresh Library") {
@@ -596,8 +1532,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
             }
 
             if let refreshSummary = appModel.appleMusicRefreshSummary,
@@ -631,8 +1566,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
 
                 Button("Change Provider") {
                     appModel.showMusicProviderPicker()
@@ -641,8 +1575,7 @@ private struct HomeMusicWidget: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
             }
 
             let libraryPlaylists = Array(appModel.appleMusicLibraryPlaylists.prefix(3))
@@ -702,11 +1635,10 @@ private struct HomeMusicWidget: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(RepSyncTheme.primaryGreen)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(RepSyncTheme.cardElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
     }
@@ -751,8 +1683,7 @@ struct AppleMusicPlaylistPickerSheet: View {
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
 
                     Button("Done") {
                         dismiss()
@@ -761,8 +1692,7 @@ struct AppleMusicPlaylistPickerSheet: View {
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 40)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
                 }
 
                 if let refreshSummary = appModel.appleMusicRefreshSummary,
@@ -805,8 +1735,7 @@ struct AppleMusicPlaylistPickerSheet: View {
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
-                                    .background(RepSyncTheme.cardElevated)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
                                 }
                                 .buttonStyle(.plain)
                             }
