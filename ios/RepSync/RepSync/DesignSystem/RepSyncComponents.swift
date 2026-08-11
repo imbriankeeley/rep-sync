@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import UIKit
 
 struct RepSyncCard<Content: View>: View {
@@ -19,6 +18,10 @@ struct RepSyncCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RepSyncTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
@@ -33,10 +36,22 @@ struct RepSyncHeaderButton: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(width: 40, height: 40)
-                .background(background)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .repsyncGlassButtonBackground(background, shape: .roundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct RepSyncSaveButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Save", action: action)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(RepSyncTheme.textPrimary)
+            .frame(width: 64, height: 40)
+            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 10))
+            .buttonStyle(.plain)
     }
 }
 
@@ -52,31 +67,149 @@ struct RepSyncPrimaryButton: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 60)
-                .background(fill)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .repsyncGlassButtonBackground(fill, shape: .roundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
     }
 }
 
-struct RepSyncBottomNavBar: View {
-    @Binding var selectedTab: RepSyncTab
+struct RepSyncCenteredOverlay<Content: View>: View {
+    var maxWidth: CGFloat = 360
+    var onDismiss: (() -> Void)?
+    @ViewBuilder var content: Content
+
+    init(maxWidth: CGFloat = 360, onDismiss: (() -> Void)? = nil, @ViewBuilder content: () -> Content) {
+        self.maxWidth = maxWidth
+        self.onDismiss = onDismiss
+        self.content = content()
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(RepSyncTab.allCases, id: \.self) { tab in
-                Button {
-                    selectedTab = tab
-                } label: {
-                    Text(tab.rawValue)
-                        .font(.system(size: 16, weight: selectedTab == tab ? .semibold : .medium))
-                        .foregroundStyle(selectedTab == tab ? RepSyncTheme.textPrimary : RepSyncTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(selectedTab == tab ? RepSyncTheme.cardElevated : RepSyncTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        ZStack {
+            Color.black.opacity(0.58)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    onDismiss?()
                 }
-                .buttonStyle(.plain)
+
+            content
+                .padding(20)
+                .frame(maxWidth: maxWidth)
+                .background(RepSyncTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.35), radius: 28, x: 0, y: 18)
+                .padding(.horizontal, 24)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        .zIndex(20)
+    }
+}
+
+struct RepSyncSelectedChip: View {
+    let title: String
+    var height: CGFloat = 24
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(RepSyncTheme.textPrimary)
+            .padding(.horizontal, 9)
+            .frame(height: height)
+            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .capsule)
+            .overlay(
+                Capsule()
+                    .stroke(RepSyncTheme.primaryGreen.opacity(0.35), lineWidth: 1)
+            )
+    }
+}
+
+struct RepSyncGhostAddCard: View {
+    let title: String
+    var widthRatio: CGFloat = 0.75
+    var textSize: CGFloat = 18
+    var iconSize: CGFloat = 18
+    var iconFrame: CGFloat = 34
+    var height: CGFloat = 66
+    let action: () -> Void
+
+    var body: some View {
+        GeometryReader { proxy in
+            Button(action: action) {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "plus")
+                        .font(.system(size: iconSize, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.primaryGreen)
+                        .frame(width: iconFrame, height: iconFrame)
+                        .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .circle)
+
+                    Text(title)
+                        .font(.system(size: textSize, weight: .semibold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .background(RepSyncTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
+                        .foregroundStyle(RepSyncTheme.primaryGreen.opacity(0.42))
+                )
+                .frame(width: proxy.size.width * widthRatio)
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: height)
+    }
+}
+
+enum RepSyncGlassButtonShape {
+    case capsule
+    case circle
+    case roundedRectangle(cornerRadius: CGFloat)
+}
+
+extension View {
+    @ViewBuilder
+    func repsyncGlassButtonBackground(_ fill: Color, shape: RepSyncGlassButtonShape = .capsule) -> some View {
+        switch shape {
+        case .capsule:
+            if #available(iOS 26.0, *) {
+                glassEffect(.regular.tint(fill.opacity(0.26)).interactive(), in: .capsule)
+                    .contentShape(Capsule())
+            } else {
+                background(fill)
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
+            }
+        case .circle:
+            if #available(iOS 26.0, *) {
+                glassEffect(.regular.tint(fill.opacity(0.26)).interactive(), in: .circle)
+                    .contentShape(Circle())
+            } else {
+                background(fill)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+            }
+        case .roundedRectangle(let cornerRadius):
+            if #available(iOS 26.0, *) {
+                glassEffect(.regular.tint(fill.opacity(0.26)).interactive(), in: .rect(cornerRadius: cornerRadius))
+                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            } else {
+                background(fill)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
         }
     }
@@ -100,8 +233,9 @@ struct RepSyncActiveWorkoutBanner: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(RepSyncTheme.primaryGreen)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(maxWidth: .infinity)
+            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
         }
@@ -171,6 +305,10 @@ struct RepSyncExerciseTypeBadge: View {
             .padding(.vertical, 8)
             .background(RepSyncTheme.cardElevated)
             .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+            )
     }
 }
 
@@ -196,10 +334,11 @@ struct RepSyncSuggestionList: View {
                         }
                         Spacer()
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -209,22 +348,57 @@ struct RepSyncSuggestionList: View {
 
 struct RepSyncStreakBadge: View {
     let streak: Int
+    let workoutCount: Int
 
     var body: some View {
         if streak > 0 {
-            HStack(spacing: 8) {
-                Text("🔥")
-                    .font(.system(size: 24))
-                Text(streak == 1 ? "1 Day Streak" : "\(streak) Day Streak")
-                    .font(.system(size: 20, weight: .bold))
+            HStack(spacing: 10) {
+                metricCard(
+                    title: "Current Streak",
+                    value: streak == 1 ? "1 Day" : "\(streak) Days",
+                    icon: "flame.fill",
+                    accent: RepSyncTheme.warningOrange
+                )
+
+                metricCard(
+                    title: "Total Workouts",
+                    value: "\(workoutCount)",
+                    icon: "figure.strengthtraining.traditional",
+                    accent: RepSyncTheme.primaryGreen
+                )
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func metricCard(title: String, value: String, icon: String, accent: Color) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(accent.opacity(0.18))
+                Image(systemName: icon)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(accent)
+            }
+            .frame(width: 42, height: 42)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+
+                Text(value)
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(RepSyncTheme.textPrimary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(RepSyncTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
+        .padding(16)
+        .background(RepSyncTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(accent.opacity(0.18), lineWidth: 1)
+        )
     }
 }
 
@@ -238,6 +412,10 @@ struct RepSyncLineChart: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(RepSyncTheme.cardElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                    )
 
                 if points.count < 2 {
                     Text("No data yet")
@@ -345,66 +523,6 @@ struct RepSyncField: View {
     }
 }
 
-struct RepSyncReorderDropZone: View {
-    let index: Int
-    var isEnabled = true
-    @Binding var draggingID: UUID?
-    @Binding var highlightedIndex: Int?
-    let onDrop: (UUID, Int) -> Void
-    var onEnd: (() -> Void)?
-
-    var body: some View {
-        Color.clear
-        .frame(maxWidth: .infinity)
-        .frame(height: 8)
-        .contentShape(Rectangle())
-        .onDrop(
-            of: [.text],
-            delegate: RepSyncReorderDropDelegate(
-                index: index,
-                isEnabled: isEnabled,
-                draggingID: $draggingID,
-                highlightedIndex: $highlightedIndex,
-                onDrop: onDrop,
-                onEnd: onEnd
-            )
-        )
-    }
-}
-
-private struct RepSyncReorderDropDelegate: DropDelegate {
-    let index: Int
-    let isEnabled: Bool
-    @Binding var draggingID: UUID?
-    @Binding var highlightedIndex: Int?
-    let onDrop: (UUID, Int) -> Void
-    let onEnd: (() -> Void)?
-
-    func dropEntered(info: DropInfo) {
-        guard isEnabled, let draggingID else { return }
-        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.86)) {
-            onDrop(draggingID, index)
-        }
-        highlightedIndex = index
-    }
-
-    func dropExited(info: DropInfo) {
-        if highlightedIndex == index {
-            highlightedIndex = nil
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        isEnabled ? DropProposal(operation: .move) : nil
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        onEnd?()
-        self.draggingID = nil
-        highlightedIndex = nil
-        return true
-    }
-}
 
 struct MotivationalCard: View {
     private let gifURLs = [
