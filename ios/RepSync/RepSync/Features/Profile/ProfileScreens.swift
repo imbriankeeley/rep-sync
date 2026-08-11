@@ -8,10 +8,12 @@ struct ProfileScreen: View {
     @State private var editingBodyweightPhotoSelection: PhotosPickerItem?
     @State private var showsNewBodyweightCamera = false
     @State private var showsEditingBodyweightCamera = false
+    @FocusState private var isNewBodyweightFocused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 12) {
+        ZStack {
+            VStack(spacing: 0) {
+                VStack(spacing: 12) {
                 RepSyncCard {
                     VStack(spacing: 0) {
                         Text("Profile")
@@ -25,7 +27,7 @@ struct ProfileScreen: View {
                                 Text(appModel.profileState.displayName)
                                     .font(.system(size: 20, weight: .bold))
                                     .foregroundStyle(RepSyncTheme.textPrimary)
-                                Text("\(appModel.profileState.workoutCount) Workouts")
+                                Text("Settings")
                                     .font(.system(size: 16))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
                             }
@@ -57,8 +59,7 @@ struct ProfileScreen: View {
                                     .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(RepSyncTheme.textPrimary)
                                     .frame(width: 32, height: 32)
-                                    .background(RepSyncTheme.primaryGreen)
-                                    .clipShape(Circle())
+                                    .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .circle)
                         }
                         .buttonStyle(.plain)
                     }
@@ -116,13 +117,13 @@ struct ProfileScreen: View {
                         Button {
                             appModel.showBodyweightEntries()
                         } label: {
-                            Text("View All Entries")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.primaryGreen)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .background(RepSyncTheme.primaryGreen.opacity(0.15))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        Text("View All Entries")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .roundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
                     }
@@ -133,15 +134,39 @@ struct ProfileScreen: View {
             .padding(.top, 16)
 
             Spacer(minLength: 4)
+            }
+
+            if let entry = appModel.editingBodyweight {
+                RepSyncCenteredOverlay(onDismiss: { appModel.editingBodyweight = nil }) {
+                    editWeightSheet(entry: entry)
+                }
+            }
+
+            if appModel.showsAddBodyweightSheet {
+                RepSyncCenteredOverlay(onDismiss: { appModel.dismissAddBodyweightSheet() }) {
+                    addWeightSheet
+                }
+            }
+
+            if appModel.previewingBodyweightPhotoPath != nil && appModel.navigationPath.last != .bodyweightEntries {
+                BodyweightPhotoPreviewOverlay(
+                    photoPath: appModel.previewingBodyweightPhotoPath,
+                    onDismiss: { appModel.dismissBodyweightPhotoPreview() }
+                )
+            }
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
-        .sheet(item: $appModel.editingBodyweight) { entry in
-            editWeightSheet(entry: entry)
-                .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $appModel.showsAddBodyweightSheet) {
-            addWeightSheet
-                .presentationDetents([.medium])
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appModel.editingBodyweight?.id)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appModel.showsAddBodyweightSheet)
+        .onChange(of: appModel.showsAddBodyweightSheet) { _, isPresented in
+            guard isPresented else {
+                isNewBodyweightFocused = false
+                return
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                isNewBodyweightFocused = true
+            }
         }
         .alert("Delete Entry?", isPresented: Binding(
             get: { appModel.deletingBodyweight != nil },
@@ -157,12 +182,6 @@ struct ProfileScreen: View {
             }
         } message: {
             Text("This bodyweight entry will be removed permanently.")
-        }
-        .sheet(isPresented: Binding(
-            get: { appModel.previewingBodyweightPhotoPath != nil },
-            set: { if !$0 { appModel.dismissBodyweightPhotoPreview() } }
-        )) {
-            BodyweightPhotoPreview(photoPath: appModel.previewingBodyweightPhotoPath)
         }
     }
 
@@ -181,8 +200,8 @@ struct ProfileScreen: View {
         .frame(minHeight: 42)
         .background(RepSyncTheme.cardElevated)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .repsyncGlassBorder(cornerRadius: 10)
     }
-
     private func editWeightSheet(entry: BodyweightEntryModel) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Edit Weight")
@@ -198,6 +217,7 @@ struct ProfileScreen: View {
                 .frame(height: 46)
                 .background(RepSyncTheme.input)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .repsyncGlassBorder(cornerRadius: 12)
             BodyweightPhotoPickerRow(
                 title: "Progress Photo",
                 photoPath: appModel.editingBodyweightPhotoPath,
@@ -211,12 +231,13 @@ struct ProfileScreen: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(RepSyncTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Spacer()
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.primaryGreen.opacity(0.35), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
         }
-        .padding(24)
-        .background(RepSyncTheme.background)
         .onChange(of: editingBodyweightPhotoSelection) { _, newItem in
             guard let newItem else { return }
             Task { @MainActor in
@@ -242,11 +263,13 @@ struct ProfileScreen: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 TextField("Weight (lbs)", text: $appModel.newBodyweightValue)
                     .keyboardType(.decimalPad)
+                    .focused($isNewBodyweightFocused)
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .padding(.horizontal, 16)
                     .frame(height: 46)
                     .background(RepSyncTheme.input)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .repsyncGlassBorder(cornerRadius: 12)
                     .onChange(of: appModel.newBodyweightValue) { _, newValue in
                         let sanitized = sanitizeDecimalInput(newValue)
                         if sanitized != newValue {
@@ -269,8 +292,12 @@ struct ProfileScreen: View {
                 .foregroundStyle(RepSyncTheme.textSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
 
                 Button("Save") {
                     appModel.addBodyweight()
@@ -279,13 +306,14 @@ struct ProfileScreen: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(RepSyncTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.primaryGreen.opacity(0.35), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
             }
-            Spacer()
         }
-        .padding(24)
-        .background(RepSyncTheme.background)
         .onChange(of: newBodyweightPhotoSelection) { _, newItem in
             guard let newItem else { return }
             Task { @MainActor in
@@ -311,245 +339,222 @@ struct EditProfileScreen: View {
     @State private var isEditingBirthdate = false
 
     var body: some View {
-        let hasDraftAvatar = appModel.profileDraftAvatarPath != nil
         let draftAvatarPath = appModel.profileDraftAvatarPath
 
         ScrollView {
-            VStack(spacing: 0) {
+            LazyVStack(spacing: 12) {
                 RepSyncCard {
-                    VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 14) {
                         HStack {
                             RepSyncHeaderButton(title: "<") { appModel.pop() }
                             Spacer()
-                            Text("Edit Profile")
-                                .font(.system(size: 22, weight: .bold))
+                            Text("Settings")
+                                .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(RepSyncTheme.textPrimary)
                             Spacer()
-                            Button("Save") { appModel.saveProfile() }
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.textPrimary)
+                            RepSyncSaveButton { appModel.saveProfile() }
                         }
 
-                        VStack(spacing: 4) {
-                            PhotosPicker(selection: $avatarSelection, matching: .images) {
-                                RepSyncProfileAvatar(size: 80, imagePath: draftAvatarPath)
-                            }
-                            .buttonStyle(.plain)
-                            Text(hasDraftAvatar ? "Tap to change photo" : "Tap to choose photo")
-                                .font(.system(size: 12))
-                                .foregroundStyle(RepSyncTheme.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 32)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Display Name")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(RepSyncTheme.textSecondary)
-                            TextField("Enter display name", text: $appModel.profileDraftName)
-                                .foregroundStyle(RepSyncTheme.textPrimary)
-                                .padding(.horizontal, 16)
-                                .frame(height: 48)
-                                .background(RepSyncTheme.input)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .padding(.top, 20)
-
-                        Text("\(appModel.profileState.workoutCount) Workouts Completed")
-                            .font(.system(size: 14))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 16)
-
-                        sectionTitle("Biometrics")
-                        Text("Used later for leaderboard classes and strength rankings.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                biometricMenu(
-                                    title: "Feet",
-                                    value: "\(appModel.profileDraftHeightFeet)'"
-                                ) {
-                                    ForEach(3...8, id: \.self) { feet in
-                                        Button("\(feet)'") {
-                                            appModel.profileDraftHeightFeet = feet
-                                        }
-                                    }
+                        HStack(spacing: 16) {
+                            VStack(spacing: 6) {
+                                PhotosPicker(selection: $avatarSelection, matching: .images) {
+                                    RepSyncProfileAvatar(size: 76, imagePath: draftAvatarPath)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                                        )
                                 }
-
-                                biometricMenu(
-                                    title: "Inches",
-                                    value: "\(formatWeight(appModel.profileDraftHeightInches))\""
-                                ) {
-                                    ForEach(halfInchOptions, id: \.self) { inches in
-                                        Button("\(formatWeight(inches))\"") {
-                                            appModel.profileDraftHeightInches = inches
-                                        }
-                                    }
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Birthdate")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
-                                    Spacer()
-                                    Text(appModel.profileDraftHasBirthdate ? numericBirthdateText : "-")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(RepSyncTheme.textPrimary)
-                                    if isEditingBirthdate {
-                                        Button("Done") {
-                                            isEditingBirthdate = false
-                                        }
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(RepSyncTheme.primaryGreen)
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .frame(height: 46)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if !isEditingBirthdate {
-                                        appModel.profileDraftHasBirthdate = true
-                                        isEditingBirthdate = true
-                                    }
-                                }
-
-                                if isEditingBirthdate {
-                                    HStack(spacing: 8) {
-                                        biometricMenu(title: "Month", value: "\(birthdateComponents.month)") {
-                                            ForEach(1...12, id: \.self) { month in
-                                                Button("\(month)") {
-                                                    updateDraftBirthdate(month: month)
-                                                }
-                                            }
-                                        }
-
-                                        biometricMenu(title: "Day", value: "\(birthdateComponents.day)") {
-                                            ForEach(1...birthdateDayCount, id: \.self) { day in
-                                                Button("\(day)") {
-                                                    updateDraftBirthdate(day: day)
-                                                }
-                                            }
-                                        }
-
-                                        biometricMenu(title: "Year", value: "\(birthdateComponents.year)") {
-                                            ForEach(Array(birthdateYearRange.reversed()), id: \.self) { year in
-                                                Button("\(year)") {
-                                                    updateDraftBirthdate(year: year)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            if appModel.profileDraftHasBirthdate {
-                                HStack {
-                                    Text("Age")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
-                                    Spacer()
-                                    Text(calculatedDraftAgeText)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(RepSyncTheme.textPrimary)
-                                }
-                                .padding(.horizontal, 16)
-                                .frame(height: 46)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            } else {
-                                Button("Set Birthdate") {
-                                    appModel.profileDraftHasBirthdate = true
-                                    isEditingBirthdate = true
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.primaryGreen)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 42)
-                                .background(RepSyncTheme.primaryGreen.opacity(0.15))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .buttonStyle(.plain)
                             }
 
+                            VStack(alignment: .leading, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Display Name")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(RepSyncTheme.textSecondary)
+                                    TextField("Enter display name", text: $appModel.profileDraftName)
+                                        .foregroundStyle(RepSyncTheme.textPrimary)
+                                        .padding(.horizontal, 14)
+                                        .frame(height: 46)
+                                        .background(RepSyncTheme.input)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .repsyncGlassBorder(cornerRadius: 12)
+                                }
+
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 16)
+
+                settingsSection(
+                    title: "Biometrics",
+                    subtitle: "Used for leaderboard classes and strength rankings."
+                ) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Weight")
+                                Text("Birthdate")
                                     .font(.system(size: 14, weight: .medium))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
                                 Spacer()
-                                Text(appModel.profileState.latestWeight)
+                                Text(appModel.profileDraftHasBirthdate ? numericBirthdateText : "-")
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(RepSyncTheme.textPrimary)
+                                if isEditingBirthdate {
+                                    Button("Done") {
+                                        isEditingBirthdate = false
+                                    }
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(RepSyncTheme.primaryGreen)
+                                    .buttonStyle(.plain)
+                                }
                             }
                             .padding(.horizontal, 16)
                             .frame(height: 46)
                             .background(RepSyncTheme.cardElevated)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                            Picker("Sex", selection: $appModel.profileDraftSex) {
-                                ForEach(BiologicalSex.allCases) { sex in
-                                    Text(sex.rawValue).tag(sex)
+                            .repsyncGlassBorder(cornerRadius: 12)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if !isEditingBirthdate {
+                                    appModel.profileDraftHasBirthdate = true
+                                    isEditingBirthdate = true
                                 }
                             }
-                            .pickerStyle(.segmented)
 
-                            Picker("Training Age", selection: $appModel.profileDraftTrainingAge) {
-                                ForEach(TrainingAge.allCases) { trainingAge in
-                                    Text(trainingAge.rawValue).tag(trainingAge)
+                            if isEditingBirthdate {
+                                HStack(spacing: 8) {
+                                    biometricMenu(title: "Month", value: "\(birthdateComponents.month)") {
+                                        ForEach(1...12, id: \.self) { month in
+                                            Button("\(month)") {
+                                                updateDraftBirthdate(month: month)
+                                            }
+                                        }
+                                    }
+
+                                    biometricMenu(title: "Day", value: "\(birthdateComponents.day)") {
+                                        ForEach(1...birthdateDayCount, id: \.self) { day in
+                                            Button("\(day)") {
+                                                updateDraftBirthdate(day: day)
+                                            }
+                                        }
+                                    }
+
+                                    biometricMenu(title: "Year", value: "\(birthdateComponents.year)") {
+                                        ForEach(Array(birthdateYearRange.reversed()), id: \.self) { year in
+                                            Button("\(year)") {
+                                                updateDraftBirthdate(year: year)
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            .pickerStyle(.segmented)
                         }
-                        .padding(.top, 12)
 
-                        sectionTitle("Workout Schedule")
-                        Text("Days you plan to work out. Used for reminders.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
+                        if appModel.profileDraftHasBirthdate {
+                            settingsValueRow(title: "Age", value: calculatedDraftAgeText)
+                        } else {
+                            Button("Set Birthdate") {
+                                appModel.profileDraftHasBirthdate = true
+                                isEditingBirthdate = true
+                            }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(RepSyncTheme.primaryGreen)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 42)
+                            .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen.opacity(0.58), shape: .roundedRectangle(cornerRadius: 12))
+                            .repsyncGlassBorder(cornerRadius: 12, color: RepSyncTheme.primaryGreen.opacity(0.35))
+                            .buttonStyle(.plain)
+                        }
 
-                        HStack(spacing: 8) {
-                            ForEach(WorkoutWeekday.allCases) { day in
-                                Button {
-                                    appModel.toggleProfileWorkoutDay(day)
-                                } label: {
-                                    Text(day.shortLabel)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(appModel.profileDraftWorkoutDays.contains(day) ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: 40)
-                                        .background(appModel.profileDraftWorkoutDays.contains(day) ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        settingsValueRow(title: "Weight", value: appModel.profileState.latestWeight)
+
+                        settingsMenuRow(title: "Height", value: draftHeightText) {
+                            ForEach(3...8, id: \.self) { feet in
+                                Menu("\(feet)'") {
+                                    ForEach(halfInchOptions, id: \.self) { inches in
+                                        Button("\(feet)' \(formatWeight(inches))\"") {
+                                            appModel.profileDraftHeightFeet = feet
+                                            appModel.profileDraftHeightInches = inches
+                                        }
+                                    }
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
-                        .padding(.top, 12)
 
-                        sectionTitle("Workout Reminders")
-
-                        Toggle(isOn: $appModel.profileDraftReminderEnabled) {
-                            Text("Reminders")
-                                .font(.system(size: 16))
-                                .foregroundStyle(RepSyncTheme.textPrimary)
+                        settingsMenuRow(title: "Sex", value: appModel.profileDraftSex.rawValue) {
+                            ForEach(BiologicalSex.allCases) { sex in
+                                Button(sex.rawValue) {
+                                    appModel.profileDraftSex = sex
+                                }
+                            }
                         }
-                        .tint(RepSyncTheme.primaryGreen)
-                        .padding(.top, 12)
+                    }
+                }
+
+                settingsSection(
+                    title: "Schedule",
+                    subtitle: "Days you plan to work out. Used for reminders."
+                ) {
+                    HStack(spacing: 8) {
+                        ForEach(WorkoutWeekday.allCases) { day in
+                            Button {
+                                appModel.toggleProfileWorkoutDay(day)
+                            } label: {
+                                let isSelected = appModel.profileDraftWorkoutDays.contains(day)
+                                Text(day.shortLabel)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(RepSyncTheme.textPrimary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 40)
+                                    .repsyncGlassButtonBackground(isSelected ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(isSelected ? RepSyncTheme.primaryGreen.opacity(0.35) : RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                settingsSection(title: "Reminders") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(RepSyncTheme.primaryGreen.opacity(0.16))
+                                Image(systemName: "bell.fill")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(RepSyncTheme.primaryGreen)
+                            }
+                            .frame(width: 38, height: 38)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Workout Reminders")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(RepSyncTheme.textPrimary)
+                                Text(appModel.profileDraftReminderEnabled ? "Scheduled for selected days" : "Off")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(RepSyncTheme.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Toggle("", isOn: $appModel.profileDraftReminderEnabled)
+                                .labelsHidden()
+                                .tint(RepSyncTheme.primaryGreen)
+                        }
+                        .padding(12)
+                        .background(RepSyncTheme.cardElevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .repsyncGlassBorder(cornerRadius: 14)
 
                         if appModel.profileDraftReminderEnabled {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Notification Message")
-                                    .font(.system(size: 14, weight: .medium))
+                                    .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
 
                                 TextField("e.g. Push Day!", text: $appModel.profileDraftReminderMessage)
@@ -558,130 +563,33 @@ struct EditProfileScreen: View {
                                     .frame(height: 48)
                                     .background(RepSyncTheme.input)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .repsyncGlassBorder(cornerRadius: 12)
                             }
-                            .padding(.top, 16)
 
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Time")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(RepSyncTheme.textSecondary)
-
-                                DatePicker(
-                                    "Reminder Time",
-                                    selection: Binding(
-                                        get: { appModel.profileReminderTimeDate() },
-                                        set: { appModel.updateProfileReminderTime($0) }
-                                    ),
-                                    displayedComponents: .hourAndMinute
-                                )
-                                .labelsHidden()
-                                .tint(RepSyncTheme.primaryGreen)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .frame(height: 48)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .padding(.top, 16)
-                        }
-
-                        sectionTitle("Workout Audio")
-                        Text("Connect a music provider for workout audio controls.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            DatePicker(
+                                "Reminder Time",
+                                selection: Binding(
+                                    get: { appModel.profileReminderTimeDate() },
+                                    set: { appModel.updateProfileReminderTime($0) }
+                                ),
+                                displayedComponents: .hourAndMinute
+                            )
+                            .labelsHidden()
+                            .tint(RepSyncTheme.primaryGreen)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(appModel.selectedMusicProvider?.rawValue ?? "No provider selected")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.textPrimary)
-
-                            Text(appModel.selectedMusicProvider == .spotify ? (appModel.musicMessage ?? appModel.spotifyStatusText) : appModel.appleMusicDisplayMessage)
-                                .font(.system(size: 13))
-                                .foregroundStyle(RepSyncTheme.textSecondary)
-
-                            if appModel.selectedMusicProvider == .spotify,
-                               let debugText = appModel.spotifyDebugText,
-                               !debugText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(debugText)
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(RepSyncTheme.textSecondary)
-                            }
-                            if appModel.selectedMusicProvider == .spotify,
-                               let callbackSummary = appModel.spotifyCallbackSummary,
-                               !callbackSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(callbackSummary)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(RepSyncTheme.textSecondary)
-                            }
-
-                            if appModel.selectedMusicProvider == .spotify {
-                                Button(appModel.isSpotifyConnected ? "Reconnect Spotify" : "Connect Spotify") {
-                                    appModel.connectSpotify()
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            }
-
-                            if appModel.selectedMusicProvider == .appleMusic {
-                                Button(appModel.isRefreshingAppleMusic ? "Refreshing Apple Music..." : "Refresh Apple Music") {
-                                    appModel.refreshAppleMusicConnection()
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(RepSyncTheme.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                                if let refreshSummary = appModel.appleMusicRefreshSummary,
-                                   !refreshSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(refreshSummary)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(RepSyncTheme.textSecondary)
-                                }
-                            }
-
-                            VStack(spacing: 10) {
-                                Button("Apple Music") {
-                                    appModel.selectMusicProvider(.appleMusic)
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(appModel.selectedMusicProvider == .appleMusic ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(appModel.selectedMusicProvider == .appleMusic ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                                Button("Spotify") {
-                                    appModel.selectMusicProvider(.spotify)
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.textOnLight : RepSyncTheme.textPrimary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 40)
-                                .background(appModel.selectedMusicProvider == .spotify ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            }
                         }
-                        .padding(.top, 12)
-
-                        sectionTitle("Cloud Continuity")
-                        Text(appModel.cloudKitMessage)
-                            .font(.system(size: 12))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 8)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+
+                settingsSection(title: "Cloud Continuity") {
+                    Text(appModel.cloudKitMessage)
+                        .font(.system(size: 13))
+                        .foregroundStyle(RepSyncTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 24)
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
@@ -696,18 +604,111 @@ struct EditProfileScreen: View {
         }
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Divider().overlay(RepSyncTheme.divider)
-                .padding(.top, 24)
-            Text(title)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(RepSyncTheme.textPrimary)
+    private func settingsSection<Content: View>(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        RepSyncCard {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(RepSyncTheme.textPrimary)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(RepSyncTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                content()
+            }
         }
+    }
+
+	private func settingsValueRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 46)
+        .background(RepSyncTheme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .repsyncGlassBorder(cornerRadius: 12)
+    }
+
+    private func settingsMenuRow<Content: View>(
+        title: String,
+        value: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Menu {
+            content()
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+                Spacer()
+                Text(value)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(RepSyncTheme.textPrimary)
+                    .multilineTextAlignment(.trailing)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 46)
+            .background(RepSyncTheme.cardElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .repsyncGlassBorder(cornerRadius: 12)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsActionButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(RepSyncTheme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+            .repsyncGlassBorder(cornerRadius: 10)
+            .buttonStyle(.plain)
+    }
+
+    private func musicProviderButton(_ provider: MusicProvider) -> some View {
+        let isSelected = appModel.selectedMusicProvider == provider
+
+        return Button(provider.rawValue) {
+            appModel.selectMusicProvider(provider)
+        }
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(RepSyncTheme.textPrimary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 42)
+        .repsyncGlassButtonBackground(isSelected ? RepSyncTheme.primaryGreen : RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isSelected ? RepSyncTheme.primaryGreen.opacity(0.35) : RepSyncTheme.divider.opacity(0.35), lineWidth: 1)
+        )
+        .buttonStyle(.plain)
     }
 
     private var halfInchOptions: [Double] {
         stride(from: 0.0, through: 11.5, by: 0.5).map { $0 }
+    }
+
+    private var draftHeightText: String {
+        "\(appModel.profileDraftHeightFeet)' \(formatWeight(appModel.profileDraftHeightInches))\""
     }
 
     private var calculatedDraftAgeText: String {
@@ -789,8 +790,21 @@ struct EditProfileScreen: View {
             .frame(height: 46)
             .background(RepSyncTheme.input)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .repsyncGlassBorder(cornerRadius: 12)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    func repsyncGlassBorder(
+        cornerRadius: CGFloat,
+        color: Color = RepSyncTheme.divider.opacity(0.35)
+    ) -> some View {
+        overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(color, lineWidth: 1)
+        )
     }
 }
 
@@ -869,8 +883,17 @@ private struct BodyweightPhotoActionLabel: View {
             .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity)
             .frame(height: 36)
-            .background(isDestructive ? RepSyncTheme.destructive.opacity(0.85) : RepSyncTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .repsyncGlassButtonBackground(
+                isDestructive ? RepSyncTheme.destructive.opacity(0.85) : RepSyncTheme.card,
+                shape: .roundedRectangle(cornerRadius: 9)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(
+                        isDestructive ? RepSyncTheme.destructive.opacity(0.45) : RepSyncTheme.divider.opacity(0.35),
+                        lineWidth: 1
+                    )
+            )
     }
 }
 
@@ -956,6 +979,19 @@ private struct BodyweightPhotoPreview: View {
     }
 }
 
+private struct BodyweightPhotoPreviewOverlay: View {
+    let photoPath: String?
+    let onDismiss: () -> Void
+
+    var body: some View {
+        BodyweightPhotoPreview(photoPath: photoPath)
+            .onTapGesture(perform: onDismiss)
+        .ignoresSafeArea()
+        .transition(.opacity)
+        .zIndex(40)
+    }
+}
+
 struct BodyweightEntriesScreen: View {
     @EnvironmentObject private var appModel: RepSyncAppModel
     @State private var editingPhotoSelection: PhotosPickerItem?
@@ -990,8 +1026,9 @@ struct BodyweightEntriesScreen: View {
                             .foregroundStyle(RepSyncTheme.textSecondary)
                             .padding(.horizontal, 12)
                             .frame(height: 32)
-                            .background(RepSyncTheme.cardElevated)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 8))
+                            .repsyncGlassBorder(cornerRadius: 8)
+                            .buttonStyle(.plain)
                         } else {
                             Button("Clear") {
                                 appModel.clearBodyweightFilter()
@@ -1000,8 +1037,9 @@ struct BodyweightEntriesScreen: View {
                             .foregroundStyle(RepSyncTheme.textPrimary)
                             .padding(.horizontal, 12)
                             .frame(height: 32)
-                            .background(RepSyncTheme.destructive.opacity(0.8))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .repsyncGlassButtonBackground(RepSyncTheme.destructive.opacity(0.8), shape: .roundedRectangle(cornerRadius: 8))
+                            .repsyncGlassBorder(cornerRadius: 8, color: RepSyncTheme.destructive.opacity(0.45))
+                            .buttonStyle(.plain)
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
@@ -1013,11 +1051,18 @@ struct BodyweightEntriesScreen: View {
                     } label: {
                         Text("Compare Progress")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(appModel.bodyweightPhotoEntries.count >= 2 ? RepSyncTheme.primaryGreen : RepSyncTheme.textSecondary)
+                            .foregroundStyle(RepSyncTheme.textPrimary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
-                            .background(appModel.bodyweightPhotoEntries.count >= 2 ? RepSyncTheme.primaryGreen.opacity(0.15) : RepSyncTheme.cardElevated)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .repsyncGlassButtonBackground(
+                                appModel.bodyweightPhotoEntries.count >= 2 ? RepSyncTheme.primaryGreen.opacity(0.58) : RepSyncTheme.cardElevated,
+                                shape: .roundedRectangle(cornerRadius: 12)
+                            )
+                            .repsyncGlassBorder(
+                                cornerRadius: 12,
+                                color: appModel.bodyweightPhotoEntries.count >= 2 ? RepSyncTheme.primaryGreen.opacity(0.35) : RepSyncTheme.divider.opacity(0.35)
+                            )
                     }
                     .buttonStyle(.plain)
                     .disabled(appModel.bodyweightPhotoEntries.count < 2)
@@ -1026,32 +1071,42 @@ struct BodyweightEntriesScreen: View {
                     .listRowSeparator(.hidden)
 
                     ForEach(appModel.bodyweightEntriesState.filteredEntries) { entry in
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             Button {
                                 appModel.beginEditBodyweight(entry)
                             } label: {
                                 Text(entry.dateText)
                                     .font(.system(size: 14))
                                     .foregroundStyle(RepSyncTheme.textSecondary)
-                                    .frame(alignment: .leading)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.85)
+                                    .frame(width: 92, alignment: .leading)
                             }
                             .buttonStyle(.plain)
+                            .layoutPriority(2)
 
-                            if entry.photoPath != nil {
-                                Button {
-                                    appModel.previewBodyweightPhoto(entry.photoPath)
-                                } label: {
-                                    BodyweightPhotoThumbnail(photoPath: entry.photoPath)
+                            Group {
+                                if entry.photoPath != nil {
+                                    Button {
+                                        appModel.previewBodyweightPhoto(entry.photoPath)
+                                    } label: {
+                                        BodyweightPhotoThumbnail(photoPath: entry.photoPath)
+                                            .frame(width: 36, height: 36)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    Color.clear
                                         .frame(width: 36, height: 36)
                                 }
-                                .buttonStyle(.plain)
                             }
+                            .frame(width: 42, height: 36, alignment: .center)
+                            .layoutPriority(2)
 
                             Button {
                                 appModel.beginEditBodyweight(entry)
                             } label: {
                                 Color.clear
-                                    .frame(maxWidth: .infinity)
+                                    .frame(minWidth: 16, maxWidth: .infinity)
                                     .frame(height: 36)
                                     .contentShape(Rectangle())
                             }
@@ -1061,12 +1116,19 @@ struct BodyweightEntriesScreen: View {
                             Button {
                                 appModel.beginEditBodyweight(entry)
                             } label: {
-                                Text(entry.weightText)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundStyle(RepSyncTheme.textPrimary)
-                                    .frame(minWidth: 84, alignment: .trailing)
+                                HStack(spacing: 10) {
+                                    bodyweightFluctuationIndicator(entry)
+
+                                    Text(entry.weightText)
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundStyle(RepSyncTheme.textPrimary)
+                                        .lineLimit(1)
+                                        .frame(width: 72, alignment: .trailing)
+                                }
+                                .frame(width: 146, alignment: .trailing)
                             }
                             .buttonStyle(.plain)
+                            .layoutPriority(1)
                         }
                         .frame(minHeight: 36)
                         .contentShape(Rectangle())
@@ -1074,6 +1136,7 @@ struct BodyweightEntriesScreen: View {
                         .padding(.vertical, 12)
                         .background(RepSyncTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .repsyncGlassBorder(cornerRadius: 10)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 appModel.confirmDeleteBodyweight(entry)
@@ -1094,154 +1157,28 @@ struct BodyweightEntriesScreen: View {
         }
         .background(RepSyncTheme.background.ignoresSafeArea())
         .navigationBarBackButtonHidden(true)
-        .sheet(item: $appModel.editingBodyweight) { entry in
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Edit Weight")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                DatePicker("Date", selection: $appModel.editingBodyweightDate, displayedComponents: .date)
-                    .tint(RepSyncTheme.primaryGreen)
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                TextField("Weight", text: $appModel.editingBodyweightValue)
-                    .keyboardType(.decimalPad)
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                    .padding(.horizontal, 16)
-                    .frame(height: 46)
-                    .background(RepSyncTheme.input)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .onChange(of: appModel.editingBodyweightValue) { _, newValue in
-                        let sanitized = sanitizeDecimalInput(newValue)
-                        if sanitized != newValue {
-                            appModel.editingBodyweightValue = sanitized
-                        }
-                    }
-                BodyweightPhotoPickerRow(
-                    title: "Progress Photo",
-                    photoPath: appModel.editingBodyweightPhotoPath,
-                    selection: $editingPhotoSelection,
-                    onCamera: { showsEditingCamera = true },
-                    onPreview: { appModel.previewBodyweightPhoto(appModel.editingBodyweightPhotoPath) },
-                    onRemove: { appModel.removeEditingBodyweightPhoto() }
-                )
-                Button("Save") { appModel.saveEditedBodyweight() }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(RepSyncTheme.primaryGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                Spacer()
-            }
-            .padding(24)
-            .background(RepSyncTheme.background)
-            .presentationDetents([.medium])
-            .onChange(of: editingPhotoSelection) { _, newItem in
-                guard let newItem else { return }
-                Task { @MainActor in
-                    if let data = try? await newItem.loadTransferable(type: Data.self) {
-                        appModel.saveEditingBodyweightPhotoData(data)
-                    }
-                    editingPhotoSelection = nil
+        .overlay { bodyweightEntriesOverlays }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appModel.editingBodyweight?.id)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appModel.showsBodyweightFilterSheet)
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: appModel.showsBodyweightCompareSheet)
+        .onDisappear {
+            appModel.dismissBodyweightPhotoPreview()
+        }
+        .onChange(of: editingPhotoSelection) { _, newItem in
+            guard let newItem else { return }
+            Task { @MainActor in
+                if let data = try? await newItem.loadTransferable(type: Data.self) {
+                    appModel.saveEditingBodyweightPhotoData(data)
                 }
-            }
-            .sheet(isPresented: $showsEditingCamera) {
-                BodyweightCameraPicker { image in
-                    if let data = image.jpegData(compressionQuality: 0.9) {
-                        appModel.saveEditingBodyweightPhotoData(data)
-                    }
-                }
+                editingPhotoSelection = nil
             }
         }
-        .sheet(isPresented: $appModel.showsBodyweightFilterSheet) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Filter by Date Range")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-
-                DatePicker("Start Date", selection: $appModel.bodyweightFilterStartDate, displayedComponents: .date)
-                    .tint(RepSyncTheme.primaryGreen)
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-
-                DatePicker("End Date", selection: $appModel.bodyweightFilterEndDate, displayedComponents: .date)
-                    .tint(RepSyncTheme.primaryGreen)
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-
-                HStack(spacing: 12) {
-                    Button("Clear") {
-                        appModel.clearBodyweightFilter()
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(RepSyncTheme.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(RepSyncTheme.cardElevated)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                    Button("Apply") {
-                        appModel.applyBodyweightFilter()
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(RepSyncTheme.textPrimary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(RepSyncTheme.primaryGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .sheet(isPresented: $showsEditingCamera) {
+            BodyweightCameraPicker { image in
+                if let data = image.jpegData(compressionQuality: 0.9) {
+                    appModel.saveEditingBodyweightPhotoData(data)
                 }
-
-                Spacer()
             }
-            .padding(24)
-            .background(RepSyncTheme.background)
-            .presentationDetents([.medium])
-        }
-        .sheet(isPresented: $appModel.showsBodyweightCompareSheet) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Compare Progress")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(RepSyncTheme.textPrimary)
-
-                    if appModel.bodyweightPhotoEntries.count >= 2 {
-                        VStack(spacing: 10) {
-                            compareDateMenu(
-                                title: "First Date",
-                                selection: Binding(
-                                    get: { appModel.bodyweightCompareFirstEntry?.id ?? appModel.bodyweightPhotoEntries[0].id },
-                                    set: { appModel.bodyweightCompareFirstEntryID = $0 }
-                                )
-                            )
-
-                            compareDateMenu(
-                                title: "Second Date",
-                                selection: Binding(
-                                    get: { appModel.bodyweightCompareSecondEntry?.id ?? appModel.bodyweightPhotoEntries[1].id },
-                                    set: { appModel.bodyweightCompareSecondEntryID = $0 }
-                                )
-                            )
-                        }
-
-                        HStack(alignment: .top, spacing: 10) {
-                            comparePhotoColumn(entry: appModel.bodyweightCompareFirstEntry)
-                            comparePhotoColumn(entry: appModel.bodyweightCompareSecondEntry)
-                        }
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Add photos to at least two bodyweight entries to compare progress.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(RepSyncTheme.textSecondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 20)
-            .presentationDetents([.large])
-        }
-        .sheet(isPresented: Binding(
-            get: { appModel.previewingBodyweightPhotoPath != nil },
-            set: { if !$0 { appModel.dismissBodyweightPhotoPreview() } }
-        )) {
-            BodyweightPhotoPreview(photoPath: appModel.previewingBodyweightPhotoPath)
         }
         .alert("Delete Entry?", isPresented: Binding(
             get: { appModel.deletingBodyweight != nil },
@@ -1258,6 +1195,194 @@ struct BodyweightEntriesScreen: View {
         } message: {
             Text("This bodyweight entry will be removed permanently.")
         }
+    }
+
+    @ViewBuilder
+    private var bodyweightEntriesOverlays: some View {
+        if let entry = appModel.editingBodyweight {
+            RepSyncCenteredOverlay(onDismiss: { appModel.editingBodyweight = nil }) {
+                editBodyweightOverlay(entry: entry)
+            }
+        }
+
+        if appModel.showsBodyweightFilterSheet {
+            RepSyncCenteredOverlay(onDismiss: { appModel.showsBodyweightFilterSheet = false }) {
+                bodyweightFilterOverlay
+            }
+        }
+
+        if appModel.showsBodyweightCompareSheet {
+            RepSyncCenteredOverlay(maxWidth: 390, onDismiss: { appModel.dismissBodyweightCompare() }) {
+                bodyweightCompareOverlay
+            }
+        }
+
+        if appModel.previewingBodyweightPhotoPath != nil {
+            BodyweightPhotoPreviewOverlay(
+                photoPath: appModel.previewingBodyweightPhotoPath,
+                onDismiss: { appModel.dismissBodyweightPhotoPreview() }
+            )
+        }
+    }
+
+    private func editBodyweightOverlay(entry: BodyweightEntryModel) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Weight")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+            DatePicker("Date", selection: $appModel.editingBodyweightDate, displayedComponents: .date)
+                .tint(RepSyncTheme.primaryGreen)
+                .foregroundStyle(RepSyncTheme.textPrimary)
+            TextField("Weight", text: $appModel.editingBodyweightValue)
+                .keyboardType(.decimalPad)
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .padding(.horizontal, 16)
+                .frame(height: 46)
+                .background(RepSyncTheme.input)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .repsyncGlassBorder(cornerRadius: 12)
+                .onChange(of: appModel.editingBodyweightValue) { _, newValue in
+                    let sanitized = sanitizeDecimalInput(newValue)
+                    if sanitized != newValue {
+                        appModel.editingBodyweightValue = sanitized
+                    }
+                }
+            BodyweightPhotoPickerRow(
+                title: "Progress Photo",
+                photoPath: appModel.editingBodyweightPhotoPath,
+                selection: $editingPhotoSelection,
+                onCamera: { showsEditingCamera = true },
+                onPreview: { appModel.previewBodyweightPhoto(appModel.editingBodyweightPhotoPath) },
+                onRemove: { appModel.removeEditingBodyweightPhoto() }
+            )
+            Button("Save") { appModel.saveEditedBodyweight() }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(RepSyncTheme.primaryGreen.opacity(0.35), lineWidth: 1)
+                )
+                .buttonStyle(.plain)
+        }
+    }
+
+    private var bodyweightFilterOverlay: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Filter by Date Range")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            DatePicker("Start Date", selection: $appModel.bodyweightFilterStartDate, displayedComponents: .date)
+                .tint(RepSyncTheme.primaryGreen)
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            DatePicker("End Date", selection: $appModel.bodyweightFilterEndDate, displayedComponents: .date)
+                .tint(RepSyncTheme.primaryGreen)
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            HStack(spacing: 12) {
+                Button("Clear") {
+                    appModel.clearBodyweightFilter()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 12))
+
+                Button("Apply") {
+                    appModel.applyBodyweightFilter()
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
+            }
+        }
+    }
+
+    private var bodyweightCompareOverlay: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Compare Progress")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(RepSyncTheme.textPrimary)
+
+            if appModel.bodyweightPhotoEntries.count >= 2 {
+                VStack(spacing: 10) {
+                    compareDateMenu(
+                        title: "First Date",
+                        selection: Binding(
+                            get: { appModel.bodyweightCompareFirstEntry?.id ?? appModel.bodyweightPhotoEntries[0].id },
+                            set: { appModel.bodyweightCompareFirstEntryID = $0 }
+                        )
+                    )
+
+                    compareDateMenu(
+                        title: "Second Date",
+                        selection: Binding(
+                            get: { appModel.bodyweightCompareSecondEntry?.id ?? appModel.bodyweightPhotoEntries[1].id },
+                            set: { appModel.bodyweightCompareSecondEntryID = $0 }
+                        )
+                    )
+                }
+                .padding(12)
+                .background(RepSyncTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                HStack(alignment: .top, spacing: 10) {
+                    comparePhotoColumn(entry: appModel.bodyweightCompareFirstEntry)
+                    comparePhotoColumn(entry: appModel.bodyweightCompareSecondEntry)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                Text("Add photos to at least two bodyweight entries to compare progress.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(RepSyncTheme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func bodyweightFluctuationIndicator(_ entry: BodyweightEntryModel) -> some View {
+        Group {
+            if let fluctuationText = entry.fluctuationText,
+               let direction = entry.fluctuationDirection {
+                let color: Color = {
+                    switch direction {
+                    case .up: return RepSyncTheme.primaryGreen
+                    case .down: return RepSyncTheme.destructive
+                    case .flat: return RepSyncTheme.warningOrange
+                    }
+                }()
+                HStack(spacing: 4) {
+                    Group {
+                        switch direction {
+                        case .up:
+                            Image(systemName: "arrowtriangle.up.fill")
+                        case .down:
+                            Image(systemName: "arrowtriangle.down.fill")
+                        case .flat:
+                            Image(systemName: "minus")
+                        }
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .frame(width: 14)
+                    Text(fluctuationText)
+                        .font(.system(size: 15, weight: .medium))
+                        .monospacedDigit()
+                        .frame(width: 46, alignment: .leading)
+                }
+                .foregroundStyle(color)
+                .lineLimit(1)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: 64, alignment: .leading)
     }
 
     private func compareDateMenu(title: String, selection: Binding<UUID>) -> some View {
@@ -1280,15 +1405,12 @@ struct BodyweightEntriesScreen: View {
                     .foregroundStyle(RepSyncTheme.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(RepSyncTheme.primaryGreen)
             }
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity)
             .frame(height: 44)
-            .background(RepSyncTheme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .roundedRectangle(cornerRadius: 12))
+            .repsyncGlassBorder(cornerRadius: 12)
         }
         .buttonStyle(.plain)
     }
@@ -1300,19 +1422,14 @@ struct BodyweightEntriesScreen: View {
                 .foregroundStyle(RepSyncTheme.textPrimary)
                 .lineLimit(1)
 
-            Button {
-                appModel.previewBodyweightPhoto(entry?.photoPath)
-            } label: {
-                GeometryReader { proxy in
-                    BodyweightPhotoThumbnail(photoPath: entry?.photoPath)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                }
-                .aspectRatio(0.72, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .background(RepSyncTheme.cardElevated)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            GeometryReader { proxy in
+                BodyweightPhotoThumbnail(photoPath: entry?.photoPath)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .buttonStyle(.plain)
+            .aspectRatio(0.66, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(RepSyncTheme.cardElevated)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             Text(entry?.weightText ?? "-")
                 .font(.system(size: 13))
