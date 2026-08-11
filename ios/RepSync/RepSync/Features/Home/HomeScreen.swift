@@ -379,11 +379,19 @@ struct LeaderboardScreen: View {
                 showsLeaderboardUsernameSheet = true
             }
         }
-        .sheet(isPresented: $showsLeaderboardUsernameSheet) {
-            leaderboardUsernameSheet
-                .interactiveDismissDisabled(appModel.leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
         .overlay {
+            if showsLeaderboardUsernameSheet {
+                RepSyncCenteredOverlay(
+                    onDismiss: {
+                        if !appModel.leaderboardUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            showsLeaderboardUsernameSheet = false
+                        }
+                    }
+                ) {
+                    leaderboardUsernameOverlay
+                }
+            }
+
             if showsAddFriendSheet {
                 RepSyncCenteredOverlay(onDismiss: { showsAddFriendSheet = false }) {
                     addFriendOverlay
@@ -396,6 +404,7 @@ struct LeaderboardScreen: View {
                 }
             }
         }
+        .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsLeaderboardUsernameSheet)
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsAddFriendSheet)
         .animation(.spring(response: 0.28, dampingFraction: 0.86), value: showsFriendRequestsSheet)
     }
@@ -768,14 +777,30 @@ struct LeaderboardScreen: View {
                         .foregroundStyle(RepSyncTheme.textSecondary)
 
                     ForEach(appModel.sentFriendRequests, id: \.self) { username in
-                        Text(username)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(RepSyncTheme.textPrimary)
-                            .padding(.horizontal, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .frame(height: 34)
-                            .background(RepSyncTheme.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        HStack(spacing: 10) {
+                            Text(username)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(RepSyncTheme.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                appModel.cancelLeaderboardFriendRequest(to: username)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(RepSyncTheme.textPrimary)
+                                    .frame(width: 28, height: 28)
+                                    .repsyncGlassButtonBackground(RepSyncTheme.cardElevated, shape: .circle)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Cancel friend request to \(username)")
+                        }
+                        .padding(.leading, 12)
+                        .padding(.trailing, 4)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .background(RepSyncTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                 }
             }
@@ -844,7 +869,7 @@ struct LeaderboardScreen: View {
         }
     }
 
-    private var leaderboardUsernameSheet: some View {
+    private var leaderboardUsernameOverlay: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Leaderboard Username")
                 .font(.system(size: 22, weight: .bold))
@@ -882,13 +907,7 @@ struct LeaderboardScreen: View {
                     .repsyncGlassButtonBackground(RepSyncTheme.primaryGreen, shape: .roundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
         }
-        .padding(24)
-        .background(RepSyncTheme.background)
-        .presentationBackground(RepSyncTheme.background)
-        .presentationDetents([.height(290)])
     }
 
     private func rankIconName(for rank: StrengthRankLevel) -> String {

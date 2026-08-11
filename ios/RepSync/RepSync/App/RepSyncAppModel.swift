@@ -1119,6 +1119,12 @@ final class RepSyncAppModel: NSObject, ObservableObject {
         persistLeaderboardSocialPreferences()
     }
 
+    func cancelLeaderboardFriendRequest(to username: String) {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        sentFriendRequests.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        persistLeaderboardSocialPreferences()
+    }
+
     func acceptLeaderboardFriendRequest(from username: String) {
         let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
